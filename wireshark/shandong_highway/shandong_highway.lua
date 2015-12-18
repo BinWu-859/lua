@@ -1,6 +1,6 @@
 -- based on山东高速视频监控设备联网技术规范
 -- Bin.Wu@axis.com
--- versioin 1.0.0.1
+-- versioin 1.0.0.2
 -- 2015/12/18
 -- protocal name: SDHW
 --================================================================================================
@@ -115,5 +115,10 @@ function p_SDHW.dissector(buffer, pinfo, tree)
 end
 
 -- register protocol fields
-local SDHW_port=15000
-udp_port_table:add(SDHW_port, p_SDHW)
+local udp_port_table = DissectorTable.get("udp.port")
+local SDHW_server_port=15000
+local SDHW_device_port=15001
+local SDHW_multicast_port=15002
+udp_port_table:add(SDHW_server_port, p_SDHW)
+udp_port_table:add(SDHW_device_port, p_SDHW)
+udp_port_table:add(SDHW_multicast_port, p_SDHW)
