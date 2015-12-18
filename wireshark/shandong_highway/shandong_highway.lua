@@ -1,7 +1,7 @@
 -- based on山东高速视频监控设备联网技术规范
 -- Bin.Wu@axis.com
--- versioin 1.0.0.0
--- 2015/12/15
+-- versioin 1.0.0.1
+-- 2015/12/18
 -- protocal name: SDHW
 --================================================================================================
 --	how to use lua
@@ -95,23 +95,25 @@ function p_SDHW.dissector(buffer, pinfo, tree)
 	offset = offset + 2
 	--body length
 	local bodylength = buffer:range(offset,2):uint()
-    headtree:add(f_bodylength, buffer:range(offset,2))
+	headtree:add(f_bodylength, buffer:range(offset,2))
 	offset = offset + 2
-	--body length check
-	if buffer_len - offset < bodylength then
-		--pinfo.cols.info:set(string.format("Bad Body Length(%d)", bodylength))
-		errtree = headtree:add(buffer:range(offset), string.format("Bad Body Length(%d). Actual(%d)", bodylength, buffer_len - offset))
-		errtree:add_expert_info(PI_MALFORMED, PI_WARN);
-		--return
+
+	if bodylength > 0 then
+	    
+		--body length check
+		if buffer_len - offset < bodylength then
+			--pinfo.cols.info:set(string.format("Bad Body Length(%d)", bodylength))
+			errtree = headtree:add(buffer:range(offset), string.format("Bad Body Length(%d). Actual(%d)", bodylength, buffer_len - offset))
+			errtree:add_expert_info(PI_MALFORMED, PI_WARN);
+			--return
+		end
+		-- construct body tree
+		local bodytree = myProtoTree:add(buffer:range(offset), "Msg Body")
+		--use existed dissector to deal with xml
+		Dissector.get("xml"):call(buffer:range(offset):tvb(), pinfo, bodytree)
 	end
-	-- construct body tree
-	local bodytree = myProtoTree:add(buffer:range(offset), "Msg Body")
-	--use existed dissector to deal with xml
-	Dissector.get("xml"):call(buffer:range(offset):tvb(), pinfo, bodytree)
 end
 
 -- register protocol fields
-local udp_port_table = DissectorTable.get("udp.port")
 local SDHW_port=15000
 udp_port_table:add(SDHW_port, p_SDHW)
-
