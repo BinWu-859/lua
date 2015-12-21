@@ -1,6 +1,6 @@
 -- based on山东高速视频监控设备联网技术规范
 -- Bin.Wu@axis.com
--- versioin 1.0.0.2
+-- versioin 1.0.0.3
 -- 2015/12/21
 -- protocal name: SDHW
 --================================================================================================
@@ -43,7 +43,6 @@ local MsgType ={
 [0x000E] = "[REQ]SET DO PARAM",
 [0x8004] = "[RSP]ENCODER QUERY",
 [0x8005] = "[RSP]DECODER QUERY",
-[0x0100] = "[TEST]TEST",
 }
 
 -- construct tree
