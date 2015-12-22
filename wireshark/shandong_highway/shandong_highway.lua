@@ -1,7 +1,7 @@
 -- based on山东高速视频监控设备联网技术规范
 -- Bin.Wu@axis.com
--- versioin 1.0.0.3
--- 2015/12/21
+-- versioin 1.0.0.4
+-- 2015/12/22
 -- protocal name: SDHW
 --================================================================================================
 --	how to use lua
@@ -100,7 +100,7 @@ function p_SDHW.dissector(buffer, pinfo, tree)
 	if bodylength > 0 then
 	    
 		--body length check
-		if buffer_len - offset < bodylength then
+		if buffer_len - offset ~= bodylength then
 			--pinfo.cols.info:set(string.format("Bad Body Length(%d)", bodylength))
 			errtree = headtree:add(buffer:range(offset), string.format("Bad Body Length(%d). Actual(%d)", bodylength, buffer_len - offset))
 			errtree:add_expert_info(PI_MALFORMED, PI_WARN);
