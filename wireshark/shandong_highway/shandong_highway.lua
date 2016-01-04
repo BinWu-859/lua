@@ -1,6 +1,6 @@
 -- based on山东高速视频监控设备联网技术规范
 -- Bin.Wu@axis.com
--- versioin 1.0.0.7
+-- versioin 1.0.0.8
 -- 2016/01/04
 -- protocal name: SDHW
 --================================================================================================
@@ -17,15 +17,6 @@
 --	4 close and restart wireshark. Go for Analyze->Enable Protocols. New protocol should be in the list.
 -- ================================================================================================
 
--- protocol fields 
--- SDHW.identity ... can be used as filter
-local p_SDHW = Proto("SDHW", "Shandong Highway", "SDHW")
-local f_identity = ProtoField.uint32("SDHW.identity","identity", base.HEX)
-local f_version = ProtoField.uint16("SDHW.version","version", base.HEX)
-local f_msgtype = ProtoField.uint16("SDHW.msgtype","msgtype", base.HEX, MsgType)
-local f_msgsn = ProtoField.uint16("SDHW.msgsn","msgsn")
-local f_bodylength = ProtoField.uint8("SDHW.bodylength","bodylength")
-p_SDHW.fields = {f_identity, f_version, f_msgtype,f_msgsn, f_bodylength}
 
 -- msgtype for f_msgtype
 local MsgType ={
@@ -44,6 +35,15 @@ local MsgType ={
 [0x8004] = "[RSP]ENCODER QUERY",
 [0x8005] = "[RSP]DECODER QUERY",
 }
+-- protocol fields 
+-- SDHW.identity ... can be used as filter
+local p_SDHW = Proto("SDHW", "Shandong Highway", "SDHW")
+local f_identity = ProtoField.uint32("SDHW.identity","identity", base.HEX)
+local f_version = ProtoField.uint16("SDHW.version","version", base.HEX)
+local f_msgtype = ProtoField.uint16("SDHW.msgtype","msgtype", base.HEX, MsgType)
+local f_msgsn = ProtoField.uint16("SDHW.msgsn","msgsn")
+local f_bodylength = ProtoField.uint8("SDHW.bodylength","bodylength")
+p_SDHW.fields = {f_identity, f_version, f_msgtype,f_msgsn, f_bodylength}
 
 -- construct tree
 function p_SDHW.dissector(buffer, pinfo, tree)
@@ -85,9 +85,9 @@ function p_SDHW.dissector(buffer, pinfo, tree)
 		errtree = typetree:add(buffer:range(offset,2), string.format("Invalid Message Type(0x%04X)", msgmethod))
 		errtree:add_expert_info(PI_MALFORMED, PI_WARN);
 		-- return
+	else
+		pinfo.cols.info:set(MsgType[msgmethod])
 	end
-	typetree:add(MsgType[msgmethod], buffer:range(offset,2))
-	pinfo.cols.info:set(MsgType[msgmethod])
 	offset = offset + 2
 	--msgsn
 	headtree:add(f_msgsn, buffer:range(offset,2))
@@ -98,7 +98,7 @@ function p_SDHW.dissector(buffer, pinfo, tree)
 	offset = offset + 2
 
 	if bodylength > 0 then
-	    
+	
 		--body length check
 		if buffer_len - offset ~= bodylength then
 			--pinfo.cols.info:set(string.format("Bad Body Length(%d)", bodylength))
