@@ -1,9 +1,9 @@
 -- based on山东高速视频监控设备联网技术规范
 -- Bin.Wu@axis.com
--- versioin 1.0.0.8
+-- versioin 1.0.0.9
 -- 2016/01/04
--- protocal name: SDHW
---================================================================================================
+-- protocal name: SDHW (for UDP)
+-- ================================================================================================
 --	how to use lua
 --	1 find "Global configuration" path: 
 --		1.1 run wireshark
@@ -17,8 +17,11 @@
 --	4 close and restart wireshark. Go for Analyze->Enable Protocols. New protocol should be in the list.
 -- ================================================================================================
 
+-- ------------------------------------------------------------------------------------------------
+--  SDHW
+-- ------------------------------------------------------------------------------------------------
 
--- msgtype for f_msgtype
+-- msgtype for f_SDHW.msgtype
 local MsgType ={
 [0x0001] = "[REQ]ENCODER REG",
 [0x0002] = "[REQ]DECODER REG",
@@ -38,12 +41,12 @@ local MsgType ={
 -- protocol fields 
 -- SDHW.identity ... can be used as filter
 local p_SDHW = Proto("SDHW", "Shandong Highway", "SDHW")
-local f_identity = ProtoField.uint32("SDHW.identity","identity", base.HEX)
-local f_version = ProtoField.uint16("SDHW.version","version", base.HEX)
-local f_msgtype = ProtoField.uint16("SDHW.msgtype","msgtype", base.HEX, MsgType)
-local f_msgsn = ProtoField.uint16("SDHW.msgsn","msgsn")
-local f_bodylength = ProtoField.uint8("SDHW.bodylength","bodylength")
-p_SDHW.fields = {f_identity, f_version, f_msgtype,f_msgsn, f_bodylength}
+local f_SDHW = p_SDHW.fields
+f_SDHW.identity = ProtoField.uint32("SDHW.identity","Identity", base.HEX)
+f_SDHW.version = ProtoField.uint16("SDHW.version","Version", base.HEX)
+f_SDHW.msgtype = ProtoField.uint16("SDHW.msgtype","Msg Type", base.HEX, MsgType)
+f_SDHW.msgsn = ProtoField.uint16("SDHW.msgsn","Msg SN")
+f_SDHW.bodylength = ProtoField.uint8("SDHW.bodylength","Body Length")
 
 -- construct tree
 function p_SDHW.dissector(buffer, pinfo, tree)
@@ -71,14 +74,14 @@ function p_SDHW.dissector(buffer, pinfo, tree)
 		errtree:add_expert_info(PI_MALFORMED, PI_ERROR);
 		return
 	end
-	headtree:add(f_identity, buffer:range(offset,4))
+	headtree:add(f_SDHW.identity, buffer:range(offset,4))
 	offset = offset + 4
 	--versoin
-	headtree:add(f_version, buffer:range(offset,2))
+	headtree:add(f_SDHW.version, buffer:range(offset,2))
 	offset = offset + 2
 	--msgtype
 	local msgmethod = buffer:range(offset,2):uint()
-	local typetree = headtree:add(f_msgtype, buffer:range(offset,2))
+	local typetree = headtree:add(f_SDHW.msgtype, buffer:range(offset,2))
 	
 	if nil == MsgType[msgmethod] then
 		pinfo.cols.info:set(string.format("Invalid Message Type(0x%04X)", msgmethod))
@@ -90,11 +93,11 @@ function p_SDHW.dissector(buffer, pinfo, tree)
 	end
 	offset = offset + 2
 	--msgsn
-	headtree:add(f_msgsn, buffer:range(offset,2))
+	headtree:add(f_SDHW.msgsn, buffer:range(offset,2))
 	offset = offset + 2
 	--body length
 	local bodylength = buffer:range(offset,2):uint()
-	local bodylengthtree = headtree:add(f_bodylength, buffer:range(offset,2))
+	local bodylengthtree = headtree:add(f_SDHW.bodylength, buffer:range(offset,2))
 	offset = offset + 2
 
 	if bodylength > 0 then
@@ -102,7 +105,7 @@ function p_SDHW.dissector(buffer, pinfo, tree)
 		--body length check
 		if buffer_len - offset ~= bodylength then
 			--pinfo.cols.info:set(string.format("Bad Body Length(%d)", bodylength))
-			errtree = bodylengthtree:add(buffer:range(offset), string.format("Bad Body Length(%d). Actual(%d)", bodylength, buffer_len - offset))
+			errtree = bodylengthtree:add(buffer:range(offset), string.format("Bad Body Length(%d). Actually(%d)", bodylength, buffer_len - offset))
 			errtree:add_expert_info(PI_MALFORMED, PI_WARN);
 			--return
 		end
@@ -113,7 +116,7 @@ function p_SDHW.dissector(buffer, pinfo, tree)
 	end
 end
 
--- register protocol fields
+-- register protocol fields for SDHW
 local udp_port_table = DissectorTable.get("udp.port")
 local SDHW_server_port=15000
 local SDHW_device_port=15001
@@ -121,3 +124,4 @@ local SDHW_multicast_port=15002
 udp_port_table:add(SDHW_server_port, p_SDHW)
 udp_port_table:add(SDHW_device_port, p_SDHW)
 udp_port_table:add(SDHW_multicast_port, p_SDHW)
+
