@@ -1,6 +1,6 @@
 -- based on山东高速视频监控设备联网技术规范
 -- Bin.Wu@axis.com
--- versioin 1.0.0.6
+-- versioin 1.0.0.7
 -- 2016/01/04
 -- protocal name: SDHW
 --================================================================================================
@@ -83,8 +83,8 @@ function p_SDHW.dissector(buffer, pinfo, tree)
 	if nil == MsgType[msgmethod] then
 		pinfo.cols.info:set(string.format("Invalid Message Type(0x%04X)", msgmethod))
 		errtree = typetree:add(buffer:range(offset,2), string.format("Invalid Message Type(0x%04X)", msgmethod))
-		errtree:add_expert_info(PI_MALFORMED, PI_ERROR);
-		return
+		errtree:add_expert_info(PI_MALFORMED, PI_WARN);
+		-- return
 	end
 	typetree:add(MsgType[msgmethod], buffer:range(offset,2))
 	pinfo.cols.info:set(MsgType[msgmethod])
