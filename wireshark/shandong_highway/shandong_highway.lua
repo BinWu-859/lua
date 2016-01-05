@@ -156,7 +156,8 @@ f_SDHWC.vfmark_fe = ProtoField.uint8("SDHWC.vfmark.fe","Is Frame End", base.HEX,
 f_SDHWC.vfmark_kf = ProtoField.uint8("SDHWC.vfmark.kf","Is Key Frame", base.HEX, v_BOOL, 0x04)
 f_SDHWC.reserved1 = ProtoField.uint16("SDHWC.reserved1", "Reserved", base.HEX)
 f_SDHWC.msglength = ProtoField.uint32("SDHWC.msglength", "Msg Length")
-
+f_SDHWC.srcaddr = ProtoField.ipv4("SDHWC.srcaddr", "Src Addr")
+f_SDHWC.dstaddr = ProtoField.ipv4("SDHWC.dstaddr", "Dst Addr")
 -- construct tree
 function p_SDHWC.dissector(buffer, pinfo, tree)
 	pinfo.cols.protocol:set("SDHWC")
@@ -223,6 +224,16 @@ function p_SDHWC.dissector(buffer, pinfo, tree)
 		_Warning(string.format("Msg Length %d should NOT over 1024 in %s", msglength, c_MsgType[MsgType_Audio]), buffer:range(offset,4), nil, msglengthtree)
 	end
 
+	-- srcaddr
+	headtree:add(f_SDHWC.srcaddr, buffer:range(offset,4))
+	offset = offset + 4
+
+	-- dstaddr
+	headtree:add(f_SDHWC.dstaddr, buffer:range(offset,4))
+	offset = offset + 4
+
+	
+	
 	if msglength > 0 then
 
 
