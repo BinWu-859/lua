@@ -5,7 +5,7 @@
 -- protocal name: SDHW (for UDP) SDHWC (for TCP)
 -- ================================================================================================
 --	how to use lua
---	1 find "Global configuration" path: 
+--	1 find "Global configuration" path:
 --		1.1 run wireshark
 --		1.2 Help->About wireshark
 --		1.3 "Global configuration" is listed in "Folders" tab
@@ -50,7 +50,7 @@ local MsgType ={
 [0x8004] = "[RSP]ENCODER QUERY",
 [0x8005] = "[RSP]DECODER QUERY",
 }
--- protocol fields 
+-- protocol fields
 -- SDHW.identity ... can be used as filter
 local p_SDHW = Proto("SDHW", "Shandong Highway")
 local f_SDHW = p_SDHW.fields
@@ -63,7 +63,7 @@ f_SDHW.bodylength = ProtoField.uint16("SDHW.bodylength","Body Length")
 -- construct tree
 function p_SDHW.dissector(buffer, pinfo, tree)
 	pinfo.cols.protocol:set("SDHW")
-	
+
 	local buffer_len = buffer:len()
 	local myProtoTree = tree:add(p_SDHW, buffer:range(0, buffer_len), "SDHW")
 	local offset = 0
@@ -90,7 +90,7 @@ function p_SDHW.dissector(buffer, pinfo, tree)
 	--msgtype
 	local msgmethod = buffer:range(offset,2):uint()
 	local typetree = headtree:add(f_SDHW.msgtype, buffer:range(offset,2))
-	
+
 	if nil == MsgType[msgmethod] then
 		_Warning(string.format("Unknown Message Type(0x%04X)", msgmethod), buffer:range(offset,2), pinfo, typetree)
 	else
@@ -105,7 +105,7 @@ function p_SDHW.dissector(buffer, pinfo, tree)
 	local bodylengthtree = headtree:add(f_SDHW.bodylength, buffer:range(offset,2))
 	offset = offset + 2
 
-	if bodylength > 0 then	
+	if bodylength > 0 then
 		--body length check
 		if buffer_len - offset ~= bodylength then
 			_Warning(string.format("Bad Body Length(%d). Actually(%d)", bodylength, buffer_len - offset), buffer:range(offset), nil, bodylengthtree)
@@ -145,7 +145,7 @@ local v_BOOL ={
 [0x1] = "True",
 }
 
--- protocol fields 
+-- protocol fields
 -- SDHWC.msgtype ... can be used as filter
 local p_SDHWC = Proto("SDHWC", "Shandong Highway Compatible")
 local f_SDHWC = p_SDHWC.fields
@@ -155,13 +155,12 @@ f_SDHWC.vfmark_sf = ProtoField.uint8("SDHWC.vfmark.sf","Is Start Frame", base.HE
 f_SDHWC.vfmark_ef = ProtoField.uint8("SDHWC.vfmark.ef","Is End Frame", base.HEX, v_BOOL, 0x02)
 f_SDHWC.vfmark_kf = ProtoField.uint8("SDHWC.vfmark.kf","Is Key Frame", base.HEX, v_BOOL, 0x04)
 f_SDHWC.reserved1 = ProtoField.uint16("SDHWC.reserved1", "Reserved", base.HEX)
-f_SDHWC.bodylength = ProtoField.uint32("SDHWC.bodylength", "Body Length")
-
+f_SDHWC.msglength = ProtoField.uint32("SDHWC.msglength", "Msg Length")
 
 -- construct tree
 function p_SDHWC.dissector(buffer, pinfo, tree)
 	pinfo.cols.protocol:set("SDHWC")
-	
+
 	local buffer_len = buffer:len()
 	local myProtoTree = tree:add(p_SDHW, buffer:range(0, buffer_len), "SDHWC")
 	local offset = 0
@@ -178,7 +177,7 @@ function p_SDHWC.dissector(buffer, pinfo, tree)
 	local msgtype = buffer:range(offset,1):uint()
 	local typetree = headtree:add(f_SDHWC.msgtype, buffer:range(offset,1))
 	if nil == c_MsgType[msgtype] then
-		_Warning(string.format("Unknown Message Type(0x%02X)", msgtype), buff:range(offset, 2), pinfo, typetree)
+		_Warning(string.format("Unknown Message Type(0x%02X)", msgtype), buffer:range(offset, 2), pinfo, typetree)
 	else
 		pinfo.cols.info:set(c_MsgType[msgtype])
 	end
@@ -195,24 +194,29 @@ function p_SDHWC.dissector(buffer, pinfo, tree)
 		_Warning(string.format("Should Be 0x00 in %s", c_MsgType[msgtype]), buffer:range(offset, 1), nil, vfmarktree)
 	end
 	offset = offset + 1
-	
+
 	--reserved1
 	headtree:add(f_SDHWC.reserved1, buffer:range(offset,2))
 	offset = offset + 2
-	--body length
-	local bodylength = buffer:range(offset,4):uint()
-	headtree:add(f_SDHWC.bodylength, buffer:range(offset,4))
-	offset = offset + 2
+	--msg length
+	local msglength = buffer:range(offset,4):uint()
+	local msglengthtree = headtree:add(f_SDHWC.msglength, buffer:range(offset,4))
+	offset = offset + 4
 
-	if bodylength > 0 then
-	    
-		--body length check
-		if buffer_len - offset ~= bodylength then
-			--pinfo.cols.info:set(string.format("Bad Body Length(%d)", bodylength))
-			errtree = headtree:add(buffer:range(offset), string.format("Bad Body Length(%d). Actual(%d)", bodylength, buffer_len - offset))
-			errtree:add_expert_info(PI_MALFORMED, PI_WARN);
-			--return
-		end
+	--body length check
+	if buffer_len ~= msglength then
+		_Warning(string.format("Bad Msg Length(%d). Actual(%d)", msglength, buffer_len), buffer:range(0), nil, msglengthtree)
+	end
+	if msgtype == MsgType_Video and msglength > 2048 then
+		_Warning(string.format("Msg Length %d should NOT over 2048 in %s", msglength, c_MsgType[MsgType_Video]), buffer:range(offset,4), nil, msglengthtree)
+	end
+	if msgtype == MsgType_Audio and msglength > 1024 then
+		_Warning(string.format("Msg Length %d should NOT over 1024 in %s", msglength, c_MsgType[MsgType_Audio]), buffer:range(offset,4), nil, msglengthtree)
+	end
+
+	if msglength > 0 then
+
+
 		-- construct body tree
 		local bodytree = myProtoTree:add(buffer:range(offset), "Msg Body")
 		--use existed dissector to deal with xml
