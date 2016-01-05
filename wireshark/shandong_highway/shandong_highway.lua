@@ -68,14 +68,14 @@ function p_SDHW.dissector(buffer, pinfo, tree)
 	local myProtoTree = tree:add(p_SDHW, buffer:range(0, buffer_len), "SDHW")
 	local offset = 0
 
-	--check head length
+	-- check head length
 	if buffer_len < 12 then
 		_Error(string.format("Invalid Message Length(%d)", buffer_len), buffer:range(0, buffer_len), pinfo, myProtoTree)
 		return
 	end
 	-- construct head tree
 	local headtree = myProtoTree:add(buffer:range(offset, 12), "Msg Head")
-	--check identity
+	-- check identity
 	local identity = buffer:range(offset,4):uint()
 
 	if identity ~= 0xE1DDF2DA then
@@ -84,10 +84,10 @@ function p_SDHW.dissector(buffer, pinfo, tree)
 	end
 	headtree:add(f_SDHW.identity, buffer:range(offset,4))
 	offset = offset + 4
-	--versoin
+	-- versoin
 	headtree:add(f_SDHW.version, buffer:range(offset,2))
 	offset = offset + 2
-	--msgtype
+	-- msgtype
 	local msgmethod = buffer:range(offset,2):uint()
 	local typetree = headtree:add(f_SDHW.msgtype, buffer:range(offset,2))
 
@@ -97,22 +97,22 @@ function p_SDHW.dissector(buffer, pinfo, tree)
 		pinfo.cols.info:set(MsgType[msgmethod])
 	end
 	offset = offset + 2
-	--msgsn
+	-- msgsn
 	headtree:add(f_SDHW.msgsn, buffer:range(offset,2))
 	offset = offset + 2
-	--body length
+	-- body length
 	local bodylength = buffer:range(offset,2):uint()
 	local bodylengthtree = headtree:add(f_SDHW.bodylength, buffer:range(offset,2))
 	offset = offset + 2
 
 	if bodylength > 0 then
-		--body length check
+		-- body length check
 		if buffer_len - offset ~= bodylength then
 			_Warning(string.format("Bad Body Length(%d). Actually(%d)", bodylength, buffer_len - offset), buffer:range(offset), nil, bodylengthtree)
 		end
 		-- construct body tree
 		local bodytree = myProtoTree:add(buffer:range(offset), "Msg Body")
-		--use existed dissector to deal with xml
+		-- use existed dissector to deal with xml
 		Dissector.get("xml"):call(buffer:range(offset):tvb(), pinfo, bodytree)
 	end
 end
@@ -151,8 +151,8 @@ local p_SDHWC = Proto("SDHWC", "Shandong Highway Compatible")
 local f_SDHWC = p_SDHWC.fields
 f_SDHWC.msgtype = ProtoField.uint8("SDHWC.msgtype","Msg Type", base.HEX, c_MsgType)
 f_SDHWC.vfmark = ProtoField.uint8("SDHWC.vfmark","Video Frame Mark", base.HEX)
-f_SDHWC.vfmark_sf = ProtoField.uint8("SDHWC.vfmark.sf","Is Start Frame", base.HEX, v_BOOL, 0x01)
-f_SDHWC.vfmark_ef = ProtoField.uint8("SDHWC.vfmark.ef","Is End Frame", base.HEX, v_BOOL, 0x02)
+f_SDHWC.vfmark_fb = ProtoField.uint8("SDHWC.vfmark.fb","Is Frame Begin", base.HEX, v_BOOL, 0x01)
+f_SDHWC.vfmark_fe = ProtoField.uint8("SDHWC.vfmark.fe","Is Frame End", base.HEX, v_BOOL, 0x02)
 f_SDHWC.vfmark_kf = ProtoField.uint8("SDHWC.vfmark.kf","Is Key Frame", base.HEX, v_BOOL, 0x04)
 f_SDHWC.reserved1 = ProtoField.uint16("SDHWC.reserved1", "Reserved", base.HEX)
 f_SDHWC.msglength = ProtoField.uint32("SDHWC.msglength", "Msg Length")
@@ -165,7 +165,7 @@ function p_SDHWC.dissector(buffer, pinfo, tree)
 	local myProtoTree = tree:add(p_SDHW, buffer:range(0, buffer_len), "SDHWC")
 	local offset = 0
 
-	--check head length
+	-- check head length
 	if buffer_len < 40 then
 		_Error(string.format("Invalid Message Length(%d)", buffer_len), buffer:range(0, buffer_len), pinfo, myProtoTree)
 		return
@@ -183,27 +183,36 @@ function p_SDHWC.dissector(buffer, pinfo, tree)
 	end
 
 	offset = offset + 1
-	--vfmark
+	-- vfmark
 	local vfmarktree = headtree:add(f_SDHWC.vfmark, buffer:range(offset,1))
 
 	if msgtype == MsgType_Video then
-		vfmarktree:add(f_SDHWC.vfmark_sf, buffer:range(offset,1))
-		vfmarktree:add(f_SDHWC.vfmark_ef, buffer:range(offset,1))
+		vfmarktree:add(f_SDHWC.vfmark_fb, buffer:range(offset,1))
+		if  buffer:range(offset,1):bitfield(7) == 1 then
+			vfmarktree:append_text(", Frame Begin")
+		end	
+		vfmarktree:add(f_SDHWC.vfmark_fe, buffer:range(offset,1))
+		if  buffer:range(offset,1):bitfield(6) == 1 then
+			vfmarktree:append_text(", Frame End")
+		end	
 		vfmarktree:add(f_SDHWC.vfmark_kf, buffer:range(offset,1))
+		if  buffer:range(offset,1):bitfield(5) == 1 then
+			vfmarktree:append_text(", Key Frame")
+		end	
 	elseif buffer:range(offset,1):uint() ~= 0 then
 		_Warning(string.format("Should Be 0x00 in %s", c_MsgType[msgtype]), buffer:range(offset, 1), nil, vfmarktree)
 	end
 	offset = offset + 1
 
-	--reserved1
+	-- reserved1
 	headtree:add(f_SDHWC.reserved1, buffer:range(offset,2))
 	offset = offset + 2
-	--msg length
+	-- msg length
 	local msglength = buffer:range(offset,4):uint()
 	local msglengthtree = headtree:add(f_SDHWC.msglength, buffer:range(offset,4))
 	offset = offset + 4
 
-	--body length check
+	-- body length check
 	if buffer_len ~= msglength then
 		_Warning(string.format("Bad Msg Length(%d). Actual(%d)", msglength, buffer_len), buffer:range(0), nil, msglengthtree)
 	end
