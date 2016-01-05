@@ -1,7 +1,7 @@
 -- based on山东高速视频监控设备联网技术规范
 -- Bin.Wu@axis.com
--- versioin 1.0.0.10
--- 2016/01/04
+-- versioin 1.0.0.11
+-- 2016/01/05
 -- protocal name: SDHW (for UDP) SDHWC (for TCP)
 -- ================================================================================================
 --	how to use lua
@@ -16,7 +16,19 @@
 --		3.3 change "console.lua" to this lua file name
 --	4 close and restart wireshark. Go for Analyze->Enable Protocols. New protocol should be in the list.
 -- ================================================================================================
+function _Error(desc, range, pinfo, tree)
+	pinfo.cols.info:set(desc)
+	local errtree = tree:add(range, desc)
+	errtree:add_expert_info(PI_MALFORMED, PI_ERROR);
+end
 
+function _Warning(desc, range, pinfo, tree)
+	if pinfo ~= nil then
+		pinfo.cols.info:set(desc)
+	end
+	local errtree = tree:add(range, desc)
+	errtree:add_expert_info(PI_MALFORMED, PI_WARN);
+end
 -- ------------------------------------------------------------------------------------------------
 --  SDHW
 -- ------------------------------------------------------------------------------------------------
@@ -58,9 +70,7 @@ function p_SDHW.dissector(buffer, pinfo, tree)
 
 	--check head length
 	if buffer_len < 12 then
-		pinfo.cols.info:set(string.format("Invalid Message Length(%d)", buffer_len))
-		local errtree = myProtoTree:add(buffer:range(0, buffer_len), string.format("Invalid Message Length(%d)", buffer_len))
-		errtree:add_expert_info(PI_MALFORMED, PI_ERROR);
+		_Error(string.format("Invalid Message Length(%d)", buffer_len), buffer:range(0, buffer_len), pinfo, myProtoTree)
 		return
 	end
 	-- construct head tree
@@ -69,9 +79,7 @@ function p_SDHW.dissector(buffer, pinfo, tree)
 	local identity = buffer:range(offset,4):uint()
 
 	if identity ~= 0xE1DDF2DA then
-		pinfo.cols.info:set(string.format("Invalid Message Identity(0x%08X)", identity))
-		errtree = headtree:add(buffer:range(offset,4), string.format("Invalid Message Identity(0x%08X)", identity))
-		errtree:add_expert_info(PI_MALFORMED, PI_ERROR);
+		_Error(string.format("Invalid Message Identity(0x%08X)", identity), buffer:range(offset, 4), pinfo, headtree)
 		return
 	end
 	headtree:add(f_SDHW.identity, buffer:range(offset,4))
@@ -84,10 +92,7 @@ function p_SDHW.dissector(buffer, pinfo, tree)
 	local typetree = headtree:add(f_SDHW.msgtype, buffer:range(offset,2))
 	
 	if nil == MsgType[msgmethod] then
-		pinfo.cols.info:set(string.format("Unknown Message Type(0x%04X)", msgmethod))
-		errtree = typetree:add(buffer:range(offset,2), string.format("Unknown Message Type(0x%04X)", msgmethod))
-		errtree:add_expert_info(PI_MALFORMED, PI_WARN);
-		-- return
+		_Warning(string.format("Unknown Message Type(0x%04X)", msgmethod), buffer:range(offset,2), pinfo, typetree)
 	else
 		pinfo.cols.info:set(MsgType[msgmethod])
 	end
@@ -100,14 +105,10 @@ function p_SDHW.dissector(buffer, pinfo, tree)
 	local bodylengthtree = headtree:add(f_SDHW.bodylength, buffer:range(offset,2))
 	offset = offset + 2
 
-	if bodylength > 0 then
-	
+	if bodylength > 0 then	
 		--body length check
 		if buffer_len - offset ~= bodylength then
-			--pinfo.cols.info:set(string.format("Bad Body Length(%d)", bodylength))
-			errtree = bodylengthtree:add(buffer:range(offset), string.format("Bad Body Length(%d). Actually(%d)", bodylength, buffer_len - offset))
-			errtree:add_expert_info(PI_MALFORMED, PI_WARN);
-			--return
+			_Warning(string.format("Bad Body Length(%d). Actually(%d)", bodylength, buffer_len - offset), buffer:range(offset), nil, bodylengthtree)
 		end
 		-- construct body tree
 		local bodytree = myProtoTree:add(buffer:range(offset), "Msg Body")
@@ -167,9 +168,7 @@ function p_SDHWC.dissector(buffer, pinfo, tree)
 
 	--check head length
 	if buffer_len < 40 then
-		pinfo.cols.info:set(string.format("Invalid Message Length(%d)", buffer_len))
-		local errtree = myProtoTree:add(buffer:range(0, buffer_len), string.format("Invalid Message Length(%d)", buffer_len))
-		errtree:add_expert_info(PI_MALFORMED, PI_ERROR);
+		_Error(string.format("Invalid Message Length(%d)", buffer_len), buffer:range(0, buffer_len), pinfo, myProtoTree)
 		return
 	end
 	-- construct head tree
@@ -179,10 +178,7 @@ function p_SDHWC.dissector(buffer, pinfo, tree)
 	local msgtype = buffer:range(offset,1):uint()
 	local typetree = headtree:add(f_SDHWC.msgtype, buffer:range(offset,1))
 	if nil == c_MsgType[msgtype] then
-		pinfo.cols.info:set(string.format("Unknown Message Type(0x%02X)", msgtype))
-		errtree = typetree:add(buffer:range(offset,2), string.format("Unknown Message Type(0x%02X)", msgtype))
-		errtree:add_expert_info(PI_MALFORMED, PI_WARN);
-		-- return
+		_Warning(string.format("Unknown Message Type(0x%02X)", msgtype), buff:range(offset, 2), pinfo, typetree)
 	else
 		pinfo.cols.info:set(c_MsgType[msgtype])
 	end
@@ -196,8 +192,7 @@ function p_SDHWC.dissector(buffer, pinfo, tree)
 		vfmarktree:add(f_SDHWC.vfmark_ef, buffer:range(offset,1))
 		vfmarktree:add(f_SDHWC.vfmark_kf, buffer:range(offset,1))
 	elseif buffer:range(offset,1):uint() ~= 0 then
-		errtree = vfmarktree:add(buffer:range(offset,1), string.format("Should Be 0x00"))
-		errtree:add_expert_info(PI_MALFORMED, PI_WARN);
+		_Warning(string.format("Should Be 0x00 in %s", c_MsgType[msgtype]), buffer:range(offset, 1), nil, vfmarktree)
 	end
 	offset = offset + 1
 	
