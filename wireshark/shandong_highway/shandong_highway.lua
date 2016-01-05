@@ -199,6 +199,7 @@ function uintget(range)
 	end 
 		
 end
+last_tcp_port = 9000
 -- construct tree
 function p_SDHWC.dissector(buffer, pinfo, tree)
 	pinfo.cols.protocol:set("SDHWC")
@@ -329,6 +330,10 @@ function p_SDHWC.dissector(buffer, pinfo, tree)
 		local bodytree = treeadd(myProtoTree, buffer:range(offset), "Msg Body")
 		-- use existed dissector to deal with xml
 --		Dissector.get("xml"):call(buffer:range(offset):tvb(), pinfo, bodytree)
+	end
+	if pinfo.src_port ~= last_tcp_port then
+		last_tcp_port = pinfo.src_port
+		udp_port_table:add(last_tcp_port, p_SDHWC)
 	end
 end
 
