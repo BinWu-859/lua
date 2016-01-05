@@ -18,14 +18,13 @@
 -- ================================================================================================
 function _Error(desc, range, pinfo, tree)
 	pinfo.cols.info:set(desc)
+	pinfo.cols.info:prepend("[X]")
 	local errtree = tree:add(range, desc)
 	errtree:add_expert_info(PI_MALFORMED, PI_ERROR);
 end
 
 function _Warning(desc, range, pinfo, tree)
-	if pinfo ~= nil then
-		pinfo.cols.info:set(desc)
-	end
+	pinfo.cols.info:prepend("!")
 	local errtree = tree:add(range, desc)
 	errtree:add_expert_info(PI_MALFORMED, PI_WARN);
 end
@@ -108,7 +107,7 @@ function p_SDHW.dissector(buffer, pinfo, tree)
 	if bodylength > 0 then
 		-- body length check
 		if buffer_len - offset ~= bodylength then
-			_Warning(string.format("Bad Body Length(%d). Actually(%d)", bodylength, buffer_len - offset), buffer:range(offset), nil, bodylengthtree)
+			_Warning(string.format("Bad Body Length(%d). Actually(%d)", bodylength, buffer_len - offset), buffer:range(offset), pinfo, bodylengthtree)
 		end
 		-- construct body tree
 		local bodytree = myProtoTree:add(buffer:range(offset), "Msg Body")
@@ -243,7 +242,7 @@ function p_SDHWC.dissector(buffer, pinfo, tree)
 			vfmarktree:append_text(", Key Frame")
 		end	
 	elseif uintget(buffer:range(offset, 1)) ~= 0 then
-		_Warning(string.format("Should Be 0x00 in %s", MsgTypeC[msgtype]), buffer:range(offset, 1), nil, vfmarktree)
+		_Warning(string.format("Should Be 0x00 in %s", MsgTypeC[msgtype]), buffer:range(offset, 1), pinfo, vfmarktree)
 	end
 	offset = offset + 1
 
@@ -253,15 +252,15 @@ function p_SDHWC.dissector(buffer, pinfo, tree)
 	-- msg length
 	local msglength = uintget(buffer:range(offset, 4))
 	local msglengthtree = treeadd(headtree, f_SDHWC.msglength, buffer:range(offset, 4))
-		-- body length check
+	-- body length check
 	if buffer_len ~= msglength then
-		_Warning(string.format("Bad Msg Length(%d). Actual(%d)", msglength, buffer_len), buffer:range(0), nil, msglengthtree)
+		_Warning(string.format("Bad Msg Length(%d). Actual(%d)", msglength, buffer_len), buffer:range(0), pinfo, msglengthtree)
 	end
 	if msgtype == MsgTypeC_Video and msglength > 2048 then
-		_Warning(string.format("Msg Length %d should NOT over 2048 in %s", msglength, MsgTypeC[msgtype]), buffer:range(offset, 4), nil, msglengthtree)
+		_Warning(string.format("Msg Length %d should NOT over 2048 in %s", msglength, MsgTypeC[msgtype]), buffer:range(offset, 4), pinfo, msglengthtree)
 	end
 	if msgtype == MsgTypeC_Audio and msglength > 1024 then
-		_Warning(string.format("Msg Length %d should NOT over 1024 in %s", msglength, MsgTypeC[msgtype]), buffer:range(offset, 4), nil, msglengthtree)
+		_Warning(string.format("Msg Length %d should NOT over 1024 in %s", msglength, MsgTypeC[msgtype]), buffer:range(offset, 4), pinfo, msglengthtree)
 	end
 	offset = offset + 4
 	
@@ -276,7 +275,7 @@ function p_SDHWC.dissector(buffer, pinfo, tree)
 	-- avsn
 	local avsntree = treeadd(headtree, f_SDHWC.avsn, buffer:range(offset, 4))
 	if uintget(buffer:range(offset, 4)) ~= 0 and msgtype ~= MsgTypeC_Video and msgtype ~= MsgTypeC_Audio then
-		_Warning(string.format("Should be 0x00000000 in %s", MsgTypeC[msgtype]), buffer:range(offset, 4), nil, avsntree)
+		_Warning(string.format("Should be 0x00000000 in %s", MsgTypeC[msgtype]), buffer:range(offset, 4), pinfo, avsntree)
 	end
 	offset = offset + 4
 
@@ -284,7 +283,7 @@ function p_SDHWC.dissector(buffer, pinfo, tree)
 	local cmd = uintget(buffer:range(offset, 4))
 	local cmdtree = treeadd(headtree, f_SDHWC.cmd, buffer:range(offset, 4))
 	if cmd ~= 0xFFFF and msgtype ~= MsgTypeC_Control then
-		_Warning(string.format("Should be 0x0000FFFF in %s", MsgTypeC[msgtype]), buffer:range(offset, 4), nil, cmdtree)
+		_Warning(string.format("Should be 0x0000FFFF in %s", MsgTypeC[msgtype]), buffer:range(offset, 4), pinfo, cmdtree)
 	end
 	offset = offset + 4
 
@@ -292,10 +291,10 @@ function p_SDHWC.dissector(buffer, pinfo, tree)
 	local sformat = uintget(buffer:range(offset, 4))
 	local sformattree = treeadd(headtree, f_SDHWC.sformat, buffer:range(offset, 4))
 	if sformat ~= 0xFFFF and msgtype == MsgTypeC_Control then
-		_Warning(string.format("Should be 0x0000FFFF in %s", MsgTypeC[msgtype]), buffer:range(offset, 4), nil, sformattree)
+		_Warning(string.format("Should be 0x0000FFFF in %s", MsgTypeC[msgtype]), buffer:range(offset, 4), pinfo, sformattree)
 	end
 	if sformat ~= 0x01100001 and msgtype == MsgTypeC_Audio then
-		_Warning(string.format("Should be 0x01100001 in %s", MsgTypeC[msgtype]), buffer:range(offset, 4), nil, sformattree)
+		_Warning(string.format("Should be 0x01100001 in %s", MsgTypeC[msgtype]), buffer:range(offset, 4), pinfo, sformattree)
 	end
 	offset = offset + 4
 
@@ -307,7 +306,7 @@ function p_SDHWC.dissector(buffer, pinfo, tree)
 	local timestamp = uintget(buffer:range(offset, 4))
 	local timestamptree = treeadd(headtree, f_SDHWC.timestamp, buffer:range(offset, 4))
 	if timestamp ~= 0x0 and msgtype == MsgTypeC_Control then
-		_Warning(string.format("Should be 0x00000000 in %s", MsgTypeC[msgtype]), buffer:range(offset, 4), nil, timestamptree)
+		_Warning(string.format("Should be 0x00000000 in %s", MsgTypeC[msgtype]), buffer:range(offset, 4), pinfo, timestamptree)
 	end
 	offset = offset + 4
 
