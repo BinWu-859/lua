@@ -76,33 +76,33 @@ function p_SDHW.dissector(buffer, pinfo, tree)
 	-- construct head tree
 	local headtree = myProtoTree:add(buffer:range(offset, 12), "Msg Head")
 	-- check identity
-	local identity = buffer:range(offset,4):uint()
+	local identity = buffer:range(offset, 4):uint()
 
 	if identity ~= 0xE1DDF2DA then
 		_Error(string.format("Invalid Message Identity(0x%08X)", identity), buffer:range(offset, 4), pinfo, headtree)
 		return
 	end
-	headtree:add(f_SDHW.identity, buffer:range(offset,4))
+	headtree:add(f_SDHW.identity, buffer:range(offset, 4))
 	offset = offset + 4
 	-- versoin
-	headtree:add(f_SDHW.version, buffer:range(offset,2))
+	headtree:add(f_SDHW.version, buffer:range(offset, 2))
 	offset = offset + 2
 	-- msgtype
-	local msgmethod = buffer:range(offset,2):uint()
-	local typetree = headtree:add(f_SDHW.msgtype, buffer:range(offset,2))
+	local msgmethod = buffer:range(offset, 2):uint()
+	local typetree = headtree:add(f_SDHW.msgtype, buffer:range(offset, 2))
 
 	if nil == MsgType[msgmethod] then
-		_Warning(string.format("Unknown Message Type(0x%04X)", msgmethod), buffer:range(offset,2), pinfo, typetree)
+		_Warning(string.format("Unknown Message Type(0x%04X)", msgmethod), buffer:range(offset, 2), pinfo, typetree)
 	else
 		pinfo.cols.info:set(MsgType[msgmethod])
 	end
 	offset = offset + 2
 	-- msgsn
-	headtree:add(f_SDHW.msgsn, buffer:range(offset,2))
+	headtree:add(f_SDHW.msgsn, buffer:range(offset, 2))
 	offset = offset + 2
 	-- body length
-	local bodylength = buffer:range(offset,2):uint()
-	local bodylengthtree = headtree:add(f_SDHW.bodylength, buffer:range(offset,2))
+	local bodylength = buffer:range(offset, 2):uint()
+	local bodylengthtree = headtree:add(f_SDHW.bodylength, buffer:range(offset, 2))
 	offset = offset + 2
 
 	if bodylength > 0 then
@@ -130,14 +130,14 @@ udp_port_table:add(SDHW_multicast_port, p_SDHW)
 --  SDHWC
 -- ------------------------------------------------------------------------------------------------
 -- msgtype for f_SDHWC.msgtype
-local MsgType_Control = 3
-local MsgType_Video = 16
-local MsgType_Audio = 32
+local MsgTypeC_Control = 3
+local MsgTypeC_Video = 16
+local MsgTypeC_Audio = 32
 
-local c_MsgType ={
-[MsgType_Control] = "CONTROL MSG",
-[MsgType_Video] = "VIDEO STREAM",
-[MsgType_Audio] = "AUDIO STREAM",
+local MsgTypeC ={
+[MsgTypeC_Control] = "CONTROL MSG",
+[MsgTypeC_Video] = "VIDEO STREAM",
+[MsgTypeC_Audio] = "AUDIO STREAM",
 }
 -- BOOL Value
 local v_BOOL ={
@@ -145,25 +145,67 @@ local v_BOOL ={
 [0x1] = "True",
 }
 
+-- cmd name
+local CmdName ={
+[0xFFFF]= "STREAM",
+}
+-- stream format
+local StreamFormat ={
+[0x01100001]=MsgTypeC[MsgTypeC_Audio],
+[0x328]="SIF",
+[0x358]="HDI",
+[0x368]="D1",
+[0x3D8]="720P",
+[0x3E8]="1080P",
+[0xFFFF]= MsgTypeC[MsgTypeC_Control],
+}
+
 -- protocol fields
 -- SDHWC.msgtype ... can be used as filter
 local p_SDHWC = Proto("SDHWC", "Shandong Highway Compatible")
 local f_SDHWC = p_SDHWC.fields
-f_SDHWC.msgtype = ProtoField.uint8("SDHWC.msgtype","Msg Type", base.HEX, c_MsgType)
+f_SDHWC.msgtype = ProtoField.uint8("SDHWC.msgtype","Msg Type", base.HEX, MsgTypeC)
 f_SDHWC.vfmark = ProtoField.uint8("SDHWC.vfmark","Video Frame Mark", base.HEX)
 f_SDHWC.vfmark_fb = ProtoField.uint8("SDHWC.vfmark.fb","Is Frame Begin", base.HEX, v_BOOL, 0x01)
 f_SDHWC.vfmark_fe = ProtoField.uint8("SDHWC.vfmark.fe","Is Frame End", base.HEX, v_BOOL, 0x02)
 f_SDHWC.vfmark_kf = ProtoField.uint8("SDHWC.vfmark.kf","Is Key Frame", base.HEX, v_BOOL, 0x04)
-f_SDHWC.reserved1 = ProtoField.uint16("SDHWC.reserved1", "Reserved", base.HEX)
+f_SDHWC.reserved1 = ProtoField.uint16("SDHWC.reserved1", "Reserved1", base.HEX)
 f_SDHWC.msglength = ProtoField.uint32("SDHWC.msglength", "Msg Length")
 f_SDHWC.srcaddr = ProtoField.ipv4("SDHWC.srcaddr", "Src Addr")
 f_SDHWC.dstaddr = ProtoField.ipv4("SDHWC.dstaddr", "Dst Addr")
+f_SDHWC.avsn = ProtoField.uint32("SDHWC.avsn", "AV SN")
+f_SDHWC.cmd = ProtoField.uint32("SDHWC.cmd", "Command", base.HEX, CmdName)
+f_SDHWC.sformat = ProtoField.uint32("SDHWC.sformat", "Stream Format", base.HEX, StreamFormat)
+f_SDHWC.subdevice = ProtoField.int32("SDHWC.subdevice", "Sub Device", base.DEC)
+f_SDHWC.timestamp = ProtoField.uint32("SDHWC.timestamp", "Time Stamp", base.LOCAL)
+f_SDHWC.identity = ProtoField.uint16("SDHWC.identity", "Identity", base.HEX)
+f_SDHWC.reserved2 = ProtoField.uint16("SDHWC.reserved2", "Reserved2", base.HEX)
+
+
+local msgtype
+
+function treeadd(tree, field, range)
+	if msgtype == MsgTypeC_Control then
+		return tree:add(field, range)
+	else
+		return tree:add_le(field, range)
+	end
+end
+
+function uintget(range)
+	if msgtype == MsgTypeC_Control then
+		return range:uint()
+	else
+		return range:le_uint()
+	end 
+		
+end
 -- construct tree
 function p_SDHWC.dissector(buffer, pinfo, tree)
 	pinfo.cols.protocol:set("SDHWC")
 
 	local buffer_len = buffer:len()
-	local myProtoTree = tree:add(p_SDHW, buffer:range(0, buffer_len), "SDHWC")
+	local myProtoTree = tree:add(p_SDHWC, buffer:range(0, buffer_len), "SDHWC")
 	local offset = 0
 
 	-- check head length
@@ -172,79 +214,128 @@ function p_SDHWC.dissector(buffer, pinfo, tree)
 		return
 	end
 	-- construct head tree
-	local headtree = myProtoTree:add(buffer:range(offset, 40), "Msg Head")
+	local headtree = treeadd(myProtoTree, buffer:range(offset, 40), "Msg Head")
 
 	-- msgtype
-	local msgtype = buffer:range(offset,1):uint()
-	local typetree = headtree:add(f_SDHWC.msgtype, buffer:range(offset,1))
-	if nil == c_MsgType[msgtype] then
+	msgtype = buffer:range(offset, 1):uint()
+	local typetree = treeadd(headtree, f_SDHWC.msgtype, buffer:range(offset, 1))
+	if nil == MsgTypeC[msgtype] then
 		_Warning(string.format("Unknown Message Type(0x%02X)", msgtype), buffer:range(offset, 2), pinfo, typetree)
 	else
-		pinfo.cols.info:set(c_MsgType[msgtype])
+		pinfo.cols.info:set(MsgTypeC[msgtype])
 	end
 
 	offset = offset + 1
 	-- vfmark
-	local vfmarktree = headtree:add(f_SDHWC.vfmark, buffer:range(offset,1))
+	local vfmarktree = treeadd(headtree, f_SDHWC.vfmark, buffer:range(offset, 1))
 
-	if msgtype == MsgType_Video then
-		vfmarktree:add(f_SDHWC.vfmark_fb, buffer:range(offset,1))
-		if  buffer:range(offset,1):bitfield(7) == 1 then
+	if msgtype == MsgTypeC_Video then
+		treeadd(vfmarktree, f_SDHWC.vfmark_fb, buffer:range(offset, 1))
+		if  buffer:range(offset, 1):bitfield(7) == 1 then
 			vfmarktree:append_text(", Frame Begin")
 		end	
-		vfmarktree:add(f_SDHWC.vfmark_fe, buffer:range(offset,1))
-		if  buffer:range(offset,1):bitfield(6) == 1 then
+		treeadd(vfmarktree, f_SDHWC.vfmark_fe, buffer:range(offset, 1))
+		if  buffer:range(offset, 1):bitfield(6) == 1 then
 			vfmarktree:append_text(", Frame End")
 		end	
-		vfmarktree:add(f_SDHWC.vfmark_kf, buffer:range(offset,1))
-		if  buffer:range(offset,1):bitfield(5) == 1 then
+		treeadd(vfmarktree, f_SDHWC.vfmark_kf, buffer:range(offset, 1))
+		if  buffer:range(offset, 1):bitfield(5) == 1 then
 			vfmarktree:append_text(", Key Frame")
 		end	
-	elseif buffer:range(offset,1):uint() ~= 0 then
-		_Warning(string.format("Should Be 0x00 in %s", c_MsgType[msgtype]), buffer:range(offset, 1), nil, vfmarktree)
+	elseif uintget(buffer:range(offset, 1)) ~= 0 then
+		_Warning(string.format("Should Be 0x00 in %s", MsgTypeC[msgtype]), buffer:range(offset, 1), nil, vfmarktree)
 	end
 	offset = offset + 1
 
 	-- reserved1
-	headtree:add(f_SDHWC.reserved1, buffer:range(offset,2))
+	treeadd(headtree, f_SDHWC.reserved1, buffer:range(offset, 2))
 	offset = offset + 2
 	-- msg length
-	local msglength = buffer:range(offset,4):uint()
-	local msglengthtree = headtree:add(f_SDHWC.msglength, buffer:range(offset,4))
-	offset = offset + 4
-
-	-- body length check
+	local msglength = uintget(buffer:range(offset, 4))
+	local msglengthtree = treeadd(headtree, f_SDHWC.msglength, buffer:range(offset, 4))
+		-- body length check
 	if buffer_len ~= msglength then
 		_Warning(string.format("Bad Msg Length(%d). Actual(%d)", msglength, buffer_len), buffer:range(0), nil, msglengthtree)
 	end
-	if msgtype == MsgType_Video and msglength > 2048 then
-		_Warning(string.format("Msg Length %d should NOT over 2048 in %s", msglength, c_MsgType[MsgType_Video]), buffer:range(offset,4), nil, msglengthtree)
+	if msgtype == MsgTypeC_Video and msglength > 2048 then
+		_Warning(string.format("Msg Length %d should NOT over 2048 in %s", msglength, MsgTypeC[msgtype]), buffer:range(offset, 4), nil, msglengthtree)
 	end
-	if msgtype == MsgType_Audio and msglength > 1024 then
-		_Warning(string.format("Msg Length %d should NOT over 1024 in %s", msglength, c_MsgType[MsgType_Audio]), buffer:range(offset,4), nil, msglengthtree)
+	if msgtype == MsgTypeC_Audio and msglength > 1024 then
+		_Warning(string.format("Msg Length %d should NOT over 1024 in %s", msglength, MsgTypeC[msgtype]), buffer:range(offset, 4), nil, msglengthtree)
 	end
-
+	offset = offset + 4
+	
 	-- srcaddr
-	headtree:add(f_SDHWC.srcaddr, buffer:range(offset,4))
+	treeadd(headtree, f_SDHWC.srcaddr, buffer:range(offset, 4))
 	offset = offset + 4
 
 	-- dstaddr
-	headtree:add(f_SDHWC.dstaddr, buffer:range(offset,4))
+	treeadd(headtree, f_SDHWC.dstaddr, buffer:range(offset, 4))
 	offset = offset + 4
 
-	
-	
-	if msglength > 0 then
+	-- avsn
+	local avsntree = treeadd(headtree, f_SDHWC.avsn, buffer:range(offset, 4))
+	if uintget(buffer:range(offset, 4)) ~= 0 and msgtype ~= MsgTypeC_Video and msgtype ~= MsgTypeC_Audio then
+		_Warning(string.format("Should be 0x00000000 in %s", MsgTypeC[msgtype]), buffer:range(offset, 4), nil, avsntree)
+	end
+	offset = offset + 4
 
+	-- cmd
+	local cmd = uintget(buffer:range(offset, 4))
+	local cmdtree = treeadd(headtree, f_SDHWC.cmd, buffer:range(offset, 4))
+	if cmd ~= 0xFFFF and msgtype ~= MsgTypeC_Control then
+		_Warning(string.format("Should be 0x0000FFFF in %s", MsgTypeC[msgtype]), buffer:range(offset, 4), nil, cmdtree)
+	end
+	offset = offset + 4
 
+	-- sformat
+	local sformat = uintget(buffer:range(offset, 4))
+	local sformattree = treeadd(headtree, f_SDHWC.sformat, buffer:range(offset, 4))
+	if sformat ~= 0xFFFF and msgtype == MsgTypeC_Control then
+		_Warning(string.format("Should be 0x0000FFFF in %s", MsgTypeC[msgtype]), buffer:range(offset, 4), nil, sformattree)
+	end
+	if sformat ~= 0x01100001 and msgtype == MsgTypeC_Audio then
+		_Warning(string.format("Should be 0x01100001 in %s", MsgTypeC[msgtype]), buffer:range(offset, 4), nil, sformattree)
+	end
+	offset = offset + 4
+
+	-- subdevice
+	treeadd(headtree, f_SDHWC.subdevice, buffer:range(offset, 4))
+	offset = offset + 4
+
+	-- timestamp
+	local timestamp = uintget(buffer:range(offset, 4))
+	local timestamptree = treeadd(headtree, f_SDHWC.timestamp, buffer:range(offset, 4))
+	if timestamp ~= 0x0 and msgtype == MsgTypeC_Control then
+		_Warning(string.format("Should be 0x00000000 in %s", MsgTypeC[msgtype]), buffer:range(offset, 4), nil, timestamptree)
+	end
+	offset = offset + 4
+
+	-- identity
+	local identity = uintget(buffer:range(offset, 2))
+	if 0x3455 ~= identity then
+		_Error(string.format("Invalid Message Identity(0x%04X)", identity), buffer:range(offset, 2), pinfo, headtree)
+		return
+	end
+	treeadd(headtree, f_SDHWC.identity, buffer:range(offset, 2))
+	offset = offset + 2
+
+	-- reserved2
+	treeadd(headtree, f_SDHWC.reserved2, buffer:range(offset, 2))
+	offset = offset + 2
+
+	
+	if msglength > 40 then
 		-- construct body tree
-		local bodytree = myProtoTree:add(buffer:range(offset), "Msg Body")
-		--use existed dissector to deal with xml
-		Dissector.get("xml"):call(buffer:range(offset):tvb(), pinfo, bodytree)
+		local bodytree = treeadd(myProtoTree, buffer:range(offset), "Msg Body")
+		-- use existed dissector to deal with xml
+--		Dissector.get("xml"):call(buffer:range(offset):tvb(), pinfo, bodytree)
 	end
 end
 
 -- register protocol fields for SDHWC
-local tcp_port_table = DissectorTable.get("udp.port")
+local tcp_port_table = DissectorTable.get("tcp.port")
 local SDHWC_server_port=9000
+local SDHWC_audio_port=9003
 tcp_port_table:add(SDHWC_server_port, p_SDHWC)
+udp_port_table:add(SDHWC_audio_port, p_SDHWC)
