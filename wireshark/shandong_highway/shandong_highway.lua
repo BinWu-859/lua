@@ -134,9 +134,9 @@ local MsgTypeC_Video = 16
 local MsgTypeC_Audio = 32
 
 local MsgTypeC ={
-[MsgTypeC_Control] = "CONTROL MSG",
-[MsgTypeC_Video] = "VIDEO STREAM",
-[MsgTypeC_Audio] = "AUDIO STREAM",
+[MsgTypeC_Control] = "CONTROL_MSG",
+[MsgTypeC_Video] = "VIDEO",
+[MsgTypeC_Audio] = "AUDIO",
 }
 -- BOOL Value
 local v_BOOL ={
@@ -234,11 +234,9 @@ function SDHWC_dissector(buffer, pinfo, tree, count)
 	msgtype = buffer:range(offset, 1):uint()
 	local typetree = treeadd(headtree, f_SDHWC.msgtype, buffer:range(offset, 1))
 	if nil == MsgTypeC[msgtype] then
-		_Warning(string.format("Unknown Message Type(0x%02X)", msgtype), buffer:range(offset, 2), pinfo, typetree)
-	else
-		pinfo.cols.info:set(MsgTypeC[msgtype])
+		_Error(string.format("Unknown Message Type(0x%02X)", msgtype), buffer:range(offset, 1), pinfo, typetree)
+		return
 	end
-
 	offset = offset + 1
 	-- vfmark
 	local vfmarktree = treeadd(headtree, f_SDHWC.vfmark, buffer:range(offset, 1))
@@ -365,12 +363,13 @@ function SDHWC_dissector(buffer, pinfo, tree, count)
 	if msglength < buffer_len then
 		SDHWC_dissector(TvbRange.tvb(buffer:range(msglength)), pinfo, tree, count + 1)
 	elseif count > 0 then  
-		pinfo.cols.info:append(string.format(" x%d", count + 1))
+		pinfo.cols.info:prepend(string.format("{MSGx%d} ", count + 1))
 	end
 end
 
 last_tcp_port = 9000
 function p_SDHWC.dissector(buffer, pinfo, tree)
+	pinfo.cols.info:set("")
 	SDHWC_dissector(buffer, pinfo, tree, 0)
 	if pinfo.src_port ~= last_tcp_port then
 		last_tcp_port = pinfo.src_port
