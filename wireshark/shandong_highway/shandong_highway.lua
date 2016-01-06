@@ -16,6 +16,7 @@
 --		3.3 change "console.lua" to this lua file name
 --	4 close and restart wireshark. Go for Analyze->Enable Protocols. New protocol should be in the list.
 -- ================================================================================================
+
 function _Error(desc, range, pinfo, tree)
 	pinfo.cols.info:set(desc)
 	pinfo.cols.info:prepend("[X]")
@@ -62,7 +63,6 @@ f_SDHW.bodylength = ProtoField.uint16("SDHW.bodylength","Body Length")
 -- construct tree
 function p_SDHW.dissector(buffer, pinfo, tree)
 	pinfo.cols.protocol:set("SDHW")
-
 	local buffer_len = buffer:len()
 	local myProtoTree = tree:add(p_SDHW, buffer:range(0, buffer_len), "SDHW")
 	local offset = 0
@@ -76,7 +76,7 @@ function p_SDHW.dissector(buffer, pinfo, tree)
 	local headtree = myProtoTree:add(buffer:range(offset, 12), "Msg Head")
 	-- check identity
 	local identity = buffer:range(offset, 4):uint()
-
+	
 	if identity ~= 0xE1DDF2DA then
 		_Error(string.format("Invalid Message Identity(0x%08X)", identity), buffer:range(offset, 4), pinfo, headtree)
 		return
@@ -180,7 +180,6 @@ f_SDHWC.timestamp = ProtoField.uint32("SDHWC.timestamp", "Time Stamp", base.LOCA
 f_SDHWC.identity = ProtoField.uint16("SDHWC.identity", "Identity", base.HEX)
 f_SDHWC.reserved2 = ProtoField.uint16("SDHWC.reserved2", "Reserved2", base.HEX)
 
-
 local msgtype
 
 function treeadd(tree, field, range)
@@ -199,15 +198,14 @@ function uintget(range)
 	end 
 		
 end
-last_tcp_port = 9000
--- construct tree
-function p_SDHWC.dissector(buffer, pinfo, tree)
-	pinfo.cols.protocol:set("SDHWC")
 
+
+-- construct tree
+function SDHWC_dissector(buffer, pinfo, tree, count)
+	pinfo.cols.protocol:set("SDHWC")
 	local buffer_len = buffer:len()
 	local myProtoTree = tree:add(p_SDHWC, buffer:range(0, buffer_len), "SDHWC")
 	local offset = 0
-
 	-- check head length
 	if buffer_len < 40 then
 		_Error(string.format("Invalid Message Length(%d)", buffer_len), buffer:range(0, buffer_len), pinfo, myProtoTree)
@@ -254,7 +252,7 @@ function p_SDHWC.dissector(buffer, pinfo, tree)
 	local msglength = uintget(buffer:range(offset, 4))
 	local msglengthtree = treeadd(headtree, f_SDHWC.msglength, buffer:range(offset, 4))
 	-- body length check
-	if buffer_len ~= msglength then
+	if buffer_len < msglength then
 		_Warning(string.format("Bad Msg Length(%d). Actual(%d)", msglength, buffer_len), buffer:range(0), pinfo, msglengthtree)
 	end
 	if msgtype == MsgTypeC_Video and msglength > 2048 then
@@ -324,13 +322,23 @@ function p_SDHWC.dissector(buffer, pinfo, tree)
 	treeadd(headtree, f_SDHWC.reserved2, buffer:range(offset, 2))
 	offset = offset + 2
 
-	
 	if msglength > 40 then
 		-- construct body tree
-		local bodytree = treeadd(myProtoTree, buffer:range(offset), "Msg Body")
+		local bodytree = treeadd(myProtoTree, buffer:range(offset, msglength - 40), "Msg Body")
 		-- use existed dissector to deal with xml
 --		Dissector.get("xml"):call(buffer:range(offset):tvb(), pinfo, bodytree)
 	end
+
+	if msglength < buffer_len then
+		SDHWC_dissector(TvbRange.tvb(buffer:range(msglength)), pinfo, tree, count + 1)
+	elseif count > 0 then  
+		pinfo.cols.info:append(string.format(" x%d", count + 1))
+	end
+end
+
+last_tcp_port = 9000
+function p_SDHWC.dissector(buffer, pinfo, tree)
+	SDHWC_dissector(buffer, pinfo, tree, 0)
 	if pinfo.src_port ~= last_tcp_port then
 		last_tcp_port = pinfo.src_port
 		udp_port_table:add(last_tcp_port, p_SDHWC)
