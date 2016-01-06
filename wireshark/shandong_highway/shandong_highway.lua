@@ -1,7 +1,7 @@
 -- based on山东高速视频监控设备联网技术规范
 -- Bin.Wu@axis.com
--- versioin 1.0.0.11
--- 2016/01/05
+-- versioin 1.0.0.19
+-- 2016/01/06
 -- protocal name: SDHW (for UDP) SDHWC (for TCP)
 -- ================================================================================================
 --	how to use lua
@@ -127,6 +127,8 @@ udp_port_table:add(SDHW_multicast_port, p_SDHW)
 
 -- ------------------------------------------------------------------------------------------------
 --  SDHWC
+--  In Info column, {MSGx?} means there are ?s msg in the packet,
+--  and ! means there is a warning for malformed content
 -- ------------------------------------------------------------------------------------------------
 -- msgtype for f_SDHWC.msgtype
 local MsgTypeC_Control = 3
