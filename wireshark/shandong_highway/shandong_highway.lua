@@ -146,8 +146,24 @@ local v_BOOL ={
 
 -- cmd name
 local CmdName ={
+[0x01] = "START_VIDEO",
+[0x02] = "STOP_VIDEO",
+[0x09] = "GET_NETWORK_INFO",
+[0x0C] = "REBOOT",
+[0x0E] = "USER_LOGIN",
+[0x18] = "GET_MULTICAST_INFO",
+[0x20] = "GET_VIDEO_ENC_PARAM",
+[0x21] = "ASK_FOR_KEYFRAME",
+[0x25] = "COM_CMD_TO_DEVICE",
+[0x26] = "COM_CMD_FROM_DEVICE",
+[0x27] = "START_COM",
+[0x2B] = "ALARM",
+[0x71] = "START_AUDIO",
+[0x72] = "STOP_AUDIO",
+[0x81] = "GET_NETWORK_INFO_EXT",
 [0xFFFF]= "STREAM",
 }
+
 -- stream format
 local StreamFormat ={
 [0x01100001]=MsgTypeC[MsgTypeC_Audio],
@@ -281,9 +297,26 @@ function SDHWC_dissector(buffer, pinfo, tree, count)
 	-- cmd
 	local cmd = uintget(buffer:range(offset, 4))
 	local cmdtree = treeadd(headtree, f_SDHWC.cmd, buffer:range(offset, 4))
+	local tmpcmdname
 	if cmd ~= 0xFFFF and msgtype ~= MsgTypeC_Control then
 		_Warning(string.format("Should be 0x0000FFFF in %s", MsgTypeC[msgtype]), buffer:range(offset, 4), pinfo, cmdtree)
 	end
+	if nil == CmdName[cmd] then
+		_Warning(string.format("Unknown Command (0x%08X)", cmd), buffer:range(offset, 4), pinfo, cmdtree)
+		tmpcmdname = string.format("0x%08X", cmd)
+	else
+		tmpcmdname = string.format("%s", CmdName[cmd])
+	end
+	if msgtype ~= MsgTypeC_Control then
+		-- eg [VIDEO STREAM], [VIDEO 0x00000001]
+		tmpcmdname = string.format("[%s %s]", MsgTypeC[msgtype], tmpcmdname)
+	else
+		tmpcmdname = string.format("[%s]", tmpcmdname)
+	end
+
+	pinfo.cols.info:append(tmpcmdname)
+	myProtoTree:append_text(tmpcmdname)
+
 	offset = offset + 4
 
 	-- sformat
