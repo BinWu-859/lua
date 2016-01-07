@@ -1,6 +1,6 @@
 -- based on山东高速视频监控设备联网技术规范
 -- Bin.Wu@axis.com
--- versioin 1.0.0.20
+-- versioin 1.0.0.21
 -- 2016/01/06
 -- protocal name: SDHW (for UDP) SDHWC (for TCP)
 -- ================================================================================================
@@ -78,7 +78,7 @@ function p_SDHW.dissector(buffer, pinfo, tree)
 	local identity = buffer:range(offset, 4):uint()
 	
 	if identity ~= 0xE1DDF2DA then
-		_Error(string.format("Invalid Message Identity(0x%08X)", identity), buffer:range(offset, 4), pinfo, headtree)
+		_Error(string.format("Invalid Message Identity(0x%08x)", identity), buffer:range(offset, 4), pinfo, headtree)
 		return
 	end
 	headtree:add(f_SDHW.identity, buffer:range(offset, 4))
@@ -91,7 +91,7 @@ function p_SDHW.dissector(buffer, pinfo, tree)
 	local typetree = headtree:add(f_SDHW.msgtype, buffer:range(offset, 2))
 
 	if nil == MsgType[msgmethod] then
-		_Warning(string.format("Unknown Message Type(0x%04X)", msgmethod), buffer:range(offset, 2), pinfo, typetree)
+		_Warning(string.format("Unknown Message Type(0x%04x)", msgmethod), buffer:range(offset, 2), pinfo, typetree)
 	else
 		pinfo.cols.info:set(MsgType[msgmethod])
 	end
@@ -128,7 +128,8 @@ udp_port_table:add(SDHW_multicast_port, p_SDHW)
 -- ------------------------------------------------------------------------------------------------
 --  SDHWC
 --  In Info column, {MSGx?} means there are ?s msg in the packet,
---  and ! means there is a warning for malformed content
+--  ! means there is a warning for malformed content
+--  X means there is an error for malformed content
 -- ------------------------------------------------------------------------------------------------
 -- msgtype for f_SDHWC.msgtype
 local MsgTypeC_Control = 3
@@ -217,12 +218,198 @@ function uintget(range)
 		
 end
 
+-- cmd dissector
+-- START_VIDEO
+local TransportMode = {
+[0x0001] = "TCP",
+[0x0002] = "UDP Unicast",
+[0x0200] = "UDP Multicast",
+}
+function deal_START_VIDEO(buffer, pinfo, tree, prototree)
+	local offset = 0
+	local buffer_len = buffer:len()
+	if buffer_len < 16 then
+		_Error(string.format("Invalid Length(%d)", buffer_len), buffer:range(0, buffer_len), pinfo, tree)
+		return
+	end
+	-- format
+	local format = uintget(buffer:range(offset, 4))
+	tree:add(buffer:range(offset, 4), string.format("Format: 0x%08x", format))
+	offset = offset + 4
+	-- bitrate mode
+	local bitratemode = uintget(buffer:range(offset, 1))
+	tree:add(buffer:range(offset, 1), string.format("Bitrate Mode: 0x%02x", bitratemode))
+	offset = offset + 1
+	-- quality
+	local quality = uintget(buffer:range(offset, 1))
+	tree:add(buffer:range(offset, 1), string.format("Quality: %d (0x%02x)",quality, quality))
+	offset = offset + 1
+	-- framerate coefficient
+	local framerateco = uintget(buffer:range(offset, 1))
+	tree:add(buffer:range(offset, 1), string.format("Framerate Coefficient: %d (0x%02x)", framerateco, framerateco))
+	offset = offset + 1
+	-- encoding reset
+	local encodingreset = uintget(buffer:range(offset, 1))
+	tree:add(buffer:range(offset, 1), string.format("Encoding Reset: 0x%02x", encodingreset))
+	offset = offset + 1
+	-- bitrate
+	local bitrate = uintget(buffer:range(offset, 1))
+	tree:add(buffer:range(offset, 4), string.format("Bitrate : %d (0x%08x)", bitrate, bitrate))
+	offset = offset + 4
+	-- transport mode
+	local transportmode = uintget(buffer:range(offset, 4))
+	if nil == TransportMode[transportmode] then
+		_Error(string.format("Invalid Transport Mode(0x%08x)", transportmode), buffer:range(offset, 4), pinfo, tree)
+		return
+	else
+		tree:add(buffer:range(offset, 4), string.format("Transport Mode : %s (0x%08x)", TransportMode[transportmode], transportmode))
+		prototree:append_text(string.format("(via %s)", TransportMode[transportmode]))
+		pinfo.cols.info:append(string.format("(via %s)", TransportMode[transportmode]))
+	end	
+	offset = offset + 4
 
+end
+-- STOP_VIDEO
+function deal_STOP_VIDEO(buffer, pinfo, tree, prototree)
+	local offset = 0
+	local buffer_len = buffer:len()
+	if buffer_len < 1 then
+		_Error(string.format("Invalid Length(%d)", buffer_len), buffer:range(0, buffer_len), pinfo, tree)
+		return
+	end
+	-- flag
+	local flag = uintget(buffer:range(offset, 1))
+	tree:add(buffer:range(offset, 1), string.format("flag: 0x%08x", flag))
+	offset = offset + 1
+end
+-- GET_NETWORK_INFO
+f_SDHWC.GET_NETWORK_INFO_ip = ProtoField.ipv4("SDHWC.GET_NETWORK_INFO_ip", "IP")
+f_SDHWC.GET_NETWORK_INFO_netmask = ProtoField.ipv4("SDHWC.GET_NETWORK_INFO_netmask", "Subnet Mask")
+f_SDHWC.GET_NETWORK_INFO_gateway = ProtoField.ipv4("SDHWC.GET_NETWORK_INFO_gateway", "Gateway")
+f_SDHWC.GET_NETWORK_INFO_mac = ProtoField.ether("SDHWC.GET_NETWORK_INFO_mac", "MAC")
+f_SDHWC.GET_NETWORK_INFO_runingtime = ProtoField.relative_time("SDHWC.GET_NETWORK_INFO_runingtime", "Running Time")
+
+function deal_GET_NETWORK_INFO(buffer, pinfo, tree, prototree)
+	local offset = 0
+	local buffer_len = buffer:len()
+	if buffer_len < 28 then
+		_Error(string.format("Invalid Length(%d)", buffer_len), buffer:range(0, buffer_len), pinfo, tree)
+		return
+	end
+	-- Version
+	local version = uintget(buffer:range(offset, 4))
+	tree:add(buffer:range(offset, 4), string.format("Version: 0x%08x", version))
+	offset = offset + 4
+	-- IP
+	treeadd(tree, f_SDHWC.GET_NETWORK_INFO_ip, buffer:range(offset, 4))
+	offset = offset + 4
+	-- Subnet Mask
+	treeadd(tree, f_SDHWC.GET_NETWORK_INFO_netmask, buffer:range(offset, 4))
+	offset = offset + 4
+	-- Gateway
+	treeadd(tree, f_SDHWC.GET_NETWORK_INFO_gateway, buffer:range(offset, 4))
+	offset = offset + 4
+	-- MAC
+	treeadd(tree, f_SDHWC.GET_NETWORK_INFO_mac, buffer:range(offset, 6))
+	offset = offset + 6
+	-- Reserved
+	local reserved = uintget(buffer:range(offset, 2))
+	tree:add(buffer:range(offset, 2), string.format("Reserved: 0x%04x", reserved))
+	offset = offset + 2
+	-- Running Time
+	treeadd(tree, f_SDHWC.GET_NETWORK_INFO_runingtime, buffer:range(offset, 4))
+	offset = offset + 4
+
+	prototree:append_text("(RSP)")
+	pinfo.cols.info:append("(RSP)")
+
+end
+-- REBOOT
+function deal_REBOOT(buffer, pinfo, tree, prototree)
+	-- never run here
+end
+-- USER_LOGIN
+function deal_USER_LOGIN(buffer, pinfo, tree, prototree)
+	local offset = 0
+	local buffer_len = buffer:len()
+	if buffer_len < 12 then
+		_Error(string.format("Invalid Length(%d)", buffer_len), buffer:range(0, buffer_len), pinfo, tree)
+		return
+	end
+	-- prior
+	local version = uintget(buffer:range(offset, 1))
+	tree:add(buffer:range(offset, 1), string.format("Prior: 0x%02x", version))
+	offset = offset + 1
+
+end
+-- GET_MULTICAST_INFO
+function deal_GET_MULTICAST_INFO(buffer, pinfo, tree, prototree)
+end
+-- GET_VIDEO_ENC_PARAM
+function deal_GET_VIDEO_ENC_PARAM(buffer, pinfo, tree, prototree)
+end
+-- ASK_FOR_KEYFRAME
+function deal_ASK_FOR_KEYFRAME(buffer, pinfo, tree, prototree)
+end
+-- COM_CMD_TO_DEVICE
+function deal_COM_CMD_TO_DEVICE(buffer, pinfo, tree, prototree)
+end
+-- COM_CMD_FROM_DEVICE
+function deal_COM_CMD_FROM_DEVICE(buffer, pinfo, tree, prototree)
+end
+-- START_COM
+function deal_START_COM(buffer, pinfo, tree, prototree)
+end
+-- ALARM
+function deal_ALARM(buffer, pinfo, tree, prototree)
+end
+-- START_AUDIO
+function deal_START_AUDIO(buffer, pinfo, tree, prototree)
+end
+-- STOP_AUDIO
+function deal_STOP_AUDIO(buffer, pinfo, tree, prototree)
+	local offset = 0
+	local buffer_len = buffer:len()
+	if buffer_len < 1 then
+		_Error(string.format("Invalid Length(%d)", buffer_len), buffer:range(0, buffer_len), pinfo, tree)
+		return
+	end
+	-- flag
+	local flag = uintget(buffer:range(offset, 1))
+	tree:add(buffer:range(offset, 1), string.format("flag: 0x%08x", flag))
+	offset = offset + 1
+end
+-- GET_NETWORK_INFO_EXT
+function deal_GET_NETWORK_INFO_EXT(buffer, pinfo, tree, prototree)
+end
+-- STREAM
+function deal_STREAM(buffer, pinfo, tree, prototree)
+end
+
+-- cmd dissector
+local CmdHandler = {
+[0x01] = deal_START_VIDEO,
+[0x02] = deal_STOP_VIDEO,
+[0x09] = deal_GET_NETWORK_INFO,
+[0x0C] = deal_REBOOT,
+[0x0E] = deal_USER_LOGIN,
+[0x18] = deal_GET_MULTICAST_INFO,
+[0x20] = deal_GET_VIDEO_ENC_PARAM,
+[0x21] = deal_ASK_FOR_KEYFRAME,
+[0x25] = deal_COM_CMD_TO_DEVICE,
+[0x26] = deal_COM_CMD_FROM_DEVICE,
+[0x27] = deal_START_COM,
+[0x2B] = deal_ALARM,
+[0x71] = deal_START_AUDIO,
+[0x72] = deal_STOP_AUDIO,
+[0x81] = deal_GET_NETWORK_INFO_EXT,
+[0xFFFF]= deal_STREAM,
+}
 -- construct tree
 function SDHWC_dissector(buffer, pinfo, tree, count)
 	pinfo.cols.protocol:set("SDHWC")
 	local buffer_len = buffer:len()
-	local myProtoTree = tree:add(p_SDHWC, buffer:range(0, buffer_len), "SDHWC")
+	local myProtoTree = tree:add(p_SDHWC, buffer:range(0, buffer_len), string.format("SDHWC[%d]", count))
 	local offset = 0
 	-- check head length
 	if buffer_len < 40 then
@@ -236,24 +423,30 @@ function SDHWC_dissector(buffer, pinfo, tree, count)
 	msgtype = buffer:range(offset, 1):uint()
 	local typetree = treeadd(headtree, f_SDHWC.msgtype, buffer:range(offset, 1))
 	if nil == MsgTypeC[msgtype] then
-		_Error(string.format("Unknown Message Type(0x%02X)", msgtype), buffer:range(offset, 1), pinfo, typetree)
+		_Error(string.format("Unknown Message Type(0x%02x)", msgtype), buffer:range(offset, 1), pinfo, typetree)
 		return
 	end
 	offset = offset + 1
 	-- vfmark
 	local vfmarktree = treeadd(headtree, f_SDHWC.vfmark, buffer:range(offset, 1))
-
+	local isFB = 0
+	local isFE = 0
+	local isKF = 0
+	
 	if msgtype == MsgTypeC_Video then
 		treeadd(vfmarktree, f_SDHWC.vfmark_fb, buffer:range(offset, 1))
 		if  buffer:range(offset, 1):bitfield(7) == 1 then
+			isFB = 1
 			vfmarktree:append_text(", Frame Begin")
 		end	
 		treeadd(vfmarktree, f_SDHWC.vfmark_fe, buffer:range(offset, 1))
 		if  buffer:range(offset, 1):bitfield(6) == 1 then
+			isFE = 1
 			vfmarktree:append_text(", Frame End")
 		end	
 		treeadd(vfmarktree, f_SDHWC.vfmark_kf, buffer:range(offset, 1))
 		if  buffer:range(offset, 1):bitfield(5) == 1 then
+			isKF = 1
 			vfmarktree:append_text(", Key Frame")
 		end	
 	elseif uintget(buffer:range(offset, 1)) ~= 0 then
@@ -289,6 +482,7 @@ function SDHWC_dissector(buffer, pinfo, tree, count)
 
 	-- avsn
 	local avsntree = treeadd(headtree, f_SDHWC.avsn, buffer:range(offset, 4))
+	local avsn = uintget(buffer:range(offset, 4))
 	if uintget(buffer:range(offset, 4)) ~= 0 and msgtype ~= MsgTypeC_Video and msgtype ~= MsgTypeC_Audio then
 		_Warning(string.format("Should be 0x00000000 in %s", MsgTypeC[msgtype]), buffer:range(offset, 4), pinfo, avsntree)
 	end
@@ -302,12 +496,25 @@ function SDHWC_dissector(buffer, pinfo, tree, count)
 		_Warning(string.format("Should be 0x0000FFFF in %s", MsgTypeC[msgtype]), buffer:range(offset, 4), pinfo, cmdtree)
 	end
 	if nil == CmdName[cmd] then
-		_Warning(string.format("Unknown Command (0x%08X)", cmd), buffer:range(offset, 4), pinfo, cmdtree)
-		tmpcmdname = string.format("0x%08X", cmd)
+		_Warning(string.format("Unknown Command (0x%08x)", cmd), buffer:range(offset, 4), pinfo, cmdtree)
+		tmpcmdname = string.format("0x%08x", cmd)
 	else
 		tmpcmdname = string.format("%s", CmdName[cmd])
 	end
 	if msgtype ~= MsgTypeC_Control then
+		tmpcmdname = string.format("%s <%d>", tmpcmdname, avsn)
+		if msgtype == MsgTypeC_Video then
+			if isKF == 1 then
+				tmpcmdname = string.format("%s KeyFrame", tmpcmdname)
+			end
+			if isFB == 1 then
+				tmpcmdname = string.format("%s FrameBegin", tmpcmdname)
+			end
+			if isFE == 1 then
+				tmpcmdname = string.format("%s FrameEnd", tmpcmdname)
+			end
+
+		end
 		-- eg [VIDEO STREAM], [VIDEO 0x00000001]
 		tmpcmdname = string.format("[%s %s]", MsgTypeC[msgtype], tmpcmdname)
 	else
@@ -345,7 +552,7 @@ function SDHWC_dissector(buffer, pinfo, tree, count)
 	-- identity
 	local identity = uintget(buffer:range(offset, 2))
 	if 0x3455 ~= identity then
-		_Error(string.format("Invalid Message Identity(0x%04X)", identity), buffer:range(offset, 2), pinfo, headtree)
+		_Error(string.format("Invalid Message Identity(0x%04x)", identity), buffer:range(offset, 2), pinfo, headtree)
 		return
 	end
 	treeadd(headtree, f_SDHWC.identity, buffer:range(offset, 2))
@@ -358,8 +565,10 @@ function SDHWC_dissector(buffer, pinfo, tree, count)
 	if msglength > 40 then
 		-- construct body tree
 		local bodytree = treeadd(myProtoTree, buffer:range(offset, msglength - 40), "Msg Body")
-		-- use existed dissector to deal with xml
---		Dissector.get("xml"):call(buffer:range(offset):tvb(), pinfo, bodytree)
+		-- call corresponding command dissector
+		if nil ~= CmdHandler[cmd] then
+			CmdHandler[cmd](buffer:range(offset, msglength - 40):tvb(), pinfo, bodytree, myProtoTree)
+		end
 	end
 
 	if msglength < buffer_len then
