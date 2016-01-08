@@ -1,7 +1,7 @@
 -- based on山东高速视频监控设备联网技术规范
 -- Bin.Wu@axis.com
--- version 1.0.1.0
--- 2016/01/07
+-- version 1.0.1.1
+-- 2016/01/08
 -- protocol name: SDHW (for UDP) SDHWC (for TCP)
 -- ================================================================================================
 --	how to use lua
@@ -51,14 +51,14 @@ local MsgType ={
 [0x8005] = "[RSP]DECODER QUERY",
 }
 -- protocol fields
--- SDHW.identity ... can be used as filter
+-- sdhw.identity ... can be used as filter
 local p_SDHW = Proto("SDHW", "Shandong Highway")
 local f_SDHW = p_SDHW.fields
-f_SDHW.identity = ProtoField.uint32("SDHW.identity","Identity", base.HEX)
-f_SDHW.version = ProtoField.uint16("SDHW.version","Version", base.HEX)
-f_SDHW.msgtype = ProtoField.uint16("SDHW.msgtype","Msg Type", base.HEX, MsgType)
-f_SDHW.msgsn = ProtoField.uint16("SDHW.msgsn","Msg SN")
-f_SDHW.bodylength = ProtoField.uint16("SDHW.bodylength","Body Length")
+f_SDHW.identity = ProtoField.uint32("sdhw.identity","Identity", base.HEX)
+f_SDHW.version = ProtoField.uint16("sdhw.version","Version", base.HEX)
+f_SDHW.msgtype = ProtoField.uint16("sdhw.msgtype","Msg Type", base.HEX, MsgType)
+f_SDHW.msgsn = ProtoField.uint16("sdhw.msgsn","Msg SN")
+f_SDHW.bodylength = ProtoField.uint16("sdhw.bodylength","Body Length")
 
 -- construct tree
 function p_SDHW.dissector(buffer, pinfo, tree)
@@ -183,25 +183,25 @@ local BitrateMode ={
 [1] = "VBR"
 }
 -- protocol fields
--- SDHWC.msgtype ... can be used as filter
+-- sdhwc.msgtype ... can be used as filter
 local p_SDHWC = Proto("SDHWC", "Shandong Highway Compatible")
 local f_SDHWC = p_SDHWC.fields
-f_SDHWC.msgtype = ProtoField.uint8("SDHWC.msgtype","Msg Type", base.HEX, MsgTypeC)
-f_SDHWC.vfmark = ProtoField.uint8("SDHWC.vfmark","Video Frame Mark", base.HEX)
-f_SDHWC.vfmark_fb = ProtoField.uint8("SDHWC.vfmark.fb","Is Frame Begin", base.HEX, v_BOOL, 0x01)
-f_SDHWC.vfmark_fe = ProtoField.uint8("SDHWC.vfmark.fe","Is Frame End", base.HEX, v_BOOL, 0x02)
-f_SDHWC.vfmark_kf = ProtoField.uint8("SDHWC.vfmark.kf","Is Key Frame", base.HEX, v_BOOL, 0x04)
-f_SDHWC.reserved1 = ProtoField.uint16("SDHWC.reserved1", "Reserved1", base.HEX)
-f_SDHWC.msglength = ProtoField.uint32("SDHWC.msglength", "Msg Length")
-f_SDHWC.srcaddr = ProtoField.ipv4("SDHWC.srcaddr", "Src Addr")
-f_SDHWC.dstaddr = ProtoField.ipv4("SDHWC.dstaddr", "Dst Addr")
-f_SDHWC.avsn = ProtoField.uint32("SDHWC.avsn", "AV SN")
-f_SDHWC.cmd = ProtoField.uint32("SDHWC.cmd", "Command", base.HEX, CmdName)
-f_SDHWC.sformat = ProtoField.uint32("SDHWC.sformat", "Stream Format", base.HEX, StreamFormat)
-f_SDHWC.subdevice = ProtoField.int32("SDHWC.subdevice", "Sub Device", base.DEC)
-f_SDHWC.timestamp = ProtoField.uint32("SDHWC.timestamp", "Time Stamp", base.LOCAL)
-f_SDHWC.identity = ProtoField.uint16("SDHWC.identity", "Identity", base.HEX)
-f_SDHWC.reserved2 = ProtoField.uint16("SDHWC.reserved2", "Reserved2", base.HEX)
+f_SDHWC.msgtype = ProtoField.uint8("sdhwc.msgtype","Msg Type", base.HEX, MsgTypeC)
+f_SDHWC.vfmark = ProtoField.uint8("sdhwc.vfmark","Video Frame Mark", base.HEX)
+f_SDHWC.vfmark_fb = ProtoField.uint8("sdhwc.vfmark.fb","Is Frame Begin", base.HEX, v_BOOL, 0x01)
+f_SDHWC.vfmark_fe = ProtoField.uint8("sdhwc.vfmark.fe","Is Frame End", base.HEX, v_BOOL, 0x02)
+f_SDHWC.vfmark_kf = ProtoField.uint8("sdhwc.vfmark.kf","Is Key Frame", base.HEX, v_BOOL, 0x04)
+f_SDHWC.reserved1 = ProtoField.uint16("sdhwc.reserved1", "Reserved1", base.HEX)
+f_SDHWC.msglength = ProtoField.uint32("sdhwc.msglength", "Msg Length")
+f_SDHWC.srcaddr = ProtoField.ipv4("sdhwc.srcaddr", "Src Addr")
+f_SDHWC.dstaddr = ProtoField.ipv4("sdhwc.dstaddr", "Dst Addr")
+f_SDHWC.avsn = ProtoField.uint32("sdhwc.avsn", "AV SN")
+f_SDHWC.cmd = ProtoField.uint32("sdhwc.cmd", "Command", base.HEX, CmdName)
+f_SDHWC.sformat = ProtoField.uint32("sdhwc.sformat", "Stream Format", base.HEX, StreamFormat)
+f_SDHWC.subdevice = ProtoField.int32("sdhwc.subdevice", "Sub Device", base.DEC)
+f_SDHWC.timestamp = ProtoField.uint32("sdhwc.timestamp", "Time Stamp", base.LOCAL)
+f_SDHWC.identity = ProtoField.uint16("sdhwc.identity", "Identity", base.HEX)
+f_SDHWC.reserved2 = ProtoField.uint16("sdhwc.reserved2", "Reserved2", base.HEX)
 
 local msgtype
 
@@ -287,11 +287,11 @@ function deal_STOP_VIDEO(buffer, pinfo, tree, prototree)
 	offset = offset + 1
 end
 -- GET_NETWORK_INFO
-f_SDHWC.GET_NETWORK_INFO_ip = ProtoField.ipv4("SDHWC.GET_NETWORK_INFO_ip", "IP")
-f_SDHWC.GET_NETWORK_INFO_netmask = ProtoField.ipv4("SDHWC.GET_NETWORK_INFO_netmask", "Subnet Mask")
-f_SDHWC.GET_NETWORK_INFO_gateway = ProtoField.ipv4("SDHWC.GET_NETWORK_INFO_gateway", "Gateway")
-f_SDHWC.GET_NETWORK_INFO_mac = ProtoField.ether("SDHWC.GET_NETWORK_INFO_mac", "MAC")
-f_SDHWC.GET_NETWORK_INFO_runingtime = ProtoField.relative_time("SDHWC.GET_NETWORK_INFO_runingtime", "Running Time")
+f_SDHWC.GET_NETWORK_INFO_ip = ProtoField.ipv4("sdhwc.GET_NETWORK_INFO_ip", "IP")
+f_SDHWC.GET_NETWORK_INFO_netmask = ProtoField.ipv4("sdhwc.GET_NETWORK_INFO_netmask", "Subnet Mask")
+f_SDHWC.GET_NETWORK_INFO_gateway = ProtoField.ipv4("sdhwc.GET_NETWORK_INFO_gateway", "Gateway")
+f_SDHWC.GET_NETWORK_INFO_mac = ProtoField.ether("sdhwc.GET_NETWORK_INFO_mac", "MAC")
+f_SDHWC.GET_NETWORK_INFO_runingtime = ProtoField.relative_time("sdhwc.GET_NETWORK_INFO_runingtime", "Running Time")
 
 function deal_GET_NETWORK_INFO(buffer, pinfo, tree, prototree)
 	local offset = 0
@@ -332,7 +332,7 @@ function deal_REBOOT(buffer, pinfo, tree, prototree)
 	-- never run here
 end
 -- USER_LOGIN
-f_SDHWC.USER_LOGIN_ip = ProtoField.ipv4("SDHWC.USER_LOGIN_ip", "IP")
+f_SDHWC.USER_LOGIN_ip = ProtoField.ipv4("sdhwc.USER_LOGIN_ip", "IP")
 
 function deal_USER_LOGIN(buffer, pinfo, tree, prototree)
 	local offset = 0
@@ -358,7 +358,7 @@ function deal_USER_LOGIN(buffer, pinfo, tree, prototree)
 
 end
 -- GET_MULTICAST_INFO
-f_SDHWC.GET_MULTICAST_INFO_multicastip = ProtoField.ipv4("SDHWC.GET_MULTICAST_INFO_multicastip", "Multicast IP")
+f_SDHWC.GET_MULTICAST_INFO_multicastip = ProtoField.ipv4("sdhwc.GET_MULTICAST_INFO_multicastip", "Multicast IP")
 function deal_GET_MULTICAST_INFO(buffer, pinfo, tree, prototree)
 	local offset = 0
 	local buffer_len = buffer:len()
@@ -381,8 +381,8 @@ function deal_GET_MULTICAST_INFO(buffer, pinfo, tree, prototree)
 	pinfo.cols.info:append("(RSP)")
 end
 -- GET_VIDEO_ENC_PARAM
-f_SDHWC.GET_VIDEO_ENC_PARAM_format = ProtoField.uint32("SDHWC.GET_VIDEO_ENC_PARAM_format", "Stream Format", base.HEX, StreamFormat)
-f_SDHWC.GET_VIDEO_ENC_PARAM_brmode = ProtoField.uint32("SDHWC.GET_VIDEO_ENC_PARAM_brmode", "Bitrate Mode", base.HEX, BitrateMode)
+f_SDHWC.GET_VIDEO_ENC_PARAM_format = ProtoField.uint32("sdhwc.GET_VIDEO_ENC_PARAM_format", "Stream Format", base.HEX, StreamFormat)
+f_SDHWC.GET_VIDEO_ENC_PARAM_brmode = ProtoField.uint32("sdhwc.GET_VIDEO_ENC_PARAM_brmode", "Bitrate Mode", base.HEX, BitrateMode)
 function deal_GET_VIDEO_ENC_PARAM(buffer, pinfo, tree, prototree)
 	local offset = 0
 	local buffer_len = buffer:len()
@@ -452,7 +452,7 @@ local VcOpCode={
 [0x35] = "DEV_VIRTUAL_CAMERA_OP_START_CRUISE",
 [0x36] = "DEV_VIRTUAL_CAMERA_OP_STOP_CRUISE",
 }
-f_SDHWC._VIRTUAL_CAMARE_vcop = ProtoField.uint8("SDHWC.GET_VIDEO_ENC_PARAM_brmode", "Visual Camera Operation", base.HEX, VcOpCode)
+f_SDHWC._VIRTUAL_CAMARE_vcop = ProtoField.uint8("sdhwc.GET_VIDEO_ENC_PARAM_brmode", "Visual Camera Operation", base.HEX, VcOpCode)
 function _deal_VIRTUAL_CAMARE(buffer, pinfo, tree, prototree, isreq)
 	local offset = 0
 	local buffer_len = buffer:len()
@@ -503,10 +503,10 @@ local VaAlarmType={
 [0x02] = "ALARM OFF",
 [0x03] = "CURRENT ALARM",
 }
-f_SDHWC._VIDEO_ALARM_OP_alarmtype = ProtoField.uint32("SDHWC._VIDEO_ALARM_OP_alarmtype", "Alarm Type", base.HEX, VaAlarmType)
-f_SDHWC._VIDEO_ALARM_OP_alarmevent_tamper = ProtoField.uint32("SDHWC._VIDEO_ALARM_OP_alarmevent.tamper","Is Tamper", base.HEX, v_BOOL, 0x01)
-f_SDHWC._VIDEO_ALARM_OP_alarmevent_videolost = ProtoField.uint32("SDHWC._VIDEO_ALARM_OP_alarmevent.videolost","Is Video Lost", base.HEX, v_BOOL, 0x02)
-f_SDHWC._VIDEO_ALARM_OP_alarmevent_motion = ProtoField.uint32("SDHWC._VIDEO_ALARM_OP_alarmevent.tamper","Is Motion", base.HEX, v_BOOL, 0x04)
+f_SDHWC._VIDEO_ALARM_OP_alarmtype = ProtoField.uint32("sdhwc._VIDEO_ALARM_OP_alarmtype", "Alarm Type", base.HEX, VaAlarmType)
+f_SDHWC._VIDEO_ALARM_OP_alarmevent_tamper = ProtoField.uint32("sdhwc._VIDEO_ALARM_OP_alarmevent.tamper","Is Tamper", base.HEX, v_BOOL, 0x01)
+f_SDHWC._VIDEO_ALARM_OP_alarmevent_videolost = ProtoField.uint32("sdhwc._VIDEO_ALARM_OP_alarmevent.videolost","Is Video Lost", base.HEX, v_BOOL, 0x02)
+f_SDHWC._VIDEO_ALARM_OP_alarmevent_motion = ProtoField.uint32("sdhwc._VIDEO_ALARM_OP_alarmevent.tamper","Is Motion", base.HEX, v_BOOL, 0x04)
 
 function _deal_VIDEO_ALARM_OP_GET_ALARM_alarmevent(buffer, pinfo, tree, prototree)
 	local alarmevent = uintget(buffer:range(0, 4))
@@ -575,7 +575,7 @@ local VaOpCodeHandler={
 [0x01] = deal_VIDEO_ALARM_OP_GET_ALARM,
 [0x02] = deal_VIDEO_ALARM_OP_NOTIFY,
 }
-f_SDHWC._VIDEO_ALARM_vaop = ProtoField.uint8("SDHWC._VIDEO_ALARM_vaop", "Video Alarm Operation", base.HEX, VaOpCode)
+f_SDHWC._VIDEO_ALARM_vaop = ProtoField.uint8("sdhwc._VIDEO_ALARM_vaop", "Video Alarm Operation", base.HEX, VaOpCode)
 function _deal_VIDEO_ALARM(buffer, pinfo, tree, prototree, isreq)
 	local offset = 0
 	local buffer_len = buffer:len()
@@ -730,7 +730,7 @@ local DiOpCodeHandler={
 [0x04] = _deal_DIGITAL_IO_SET_OUTPUT_STATE,
 [0x05] = _deal_DIGITAL_IO_OUTPUT_STATE,
 }
-f_SDHWC._DIGITAL_IO_diop = ProtoField.uint8("SDHWC._DIGITAL_IO_diop", "Digital IO Operation", base.HEX, DiOpCode)
+f_SDHWC._DIGITAL_IO_diop = ProtoField.uint8("sdhwc._DIGITAL_IO_diop", "Digital IO Operation", base.HEX, DiOpCode)
 
 function _deal_DIGITAL_IO(buffer, pinfo, tree, prototree, isreq)
 	local offset = 0
@@ -755,7 +755,7 @@ function _deal_DIGITAL_IO(buffer, pinfo, tree, prototree, isreq)
 	DiOpCodeHandler[diop](buffer, pinfo, tree, prototree, isreq)
 end
 -- SYNC_TIME
-f_SDHWC.SYNC_TIME_gmttime = ProtoField.absolute_time("SDHWC.SYNC_TIME_gmttime", "GMT Time")
+f_SDHWC.SYNC_TIME_gmttime = ProtoField.absolute_time("sdhwc.SYNC_TIME_gmttime", "GMT Time")
 
 function _deal_SYNC_TIME(buffer, pinfo, tree, prototree, isreq)
 	local offset = 0
@@ -803,7 +803,7 @@ local ComSubFuncCodeName = {
 }
 
 -- COM_CMD
-f_SDHWC.COM_subfunc = ProtoField.uint8("SDHWC.COM_subfunc", "Sub Function", base.HEX, ComSubFuncCodeName)
+f_SDHWC.COM_subfunc = ProtoField.uint8("sdhwc.COM_subfunc", "Sub Function", base.HEX, ComSubFuncCodeName)
 function deal_COM_CMD(buffer, pinfo, tree, prototree, isreq)
 	local offset = 0
 	local buffer_len = buffer:len()
