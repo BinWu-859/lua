@@ -1,7 +1,7 @@
 -- based on ITU-T Rec.H222.0
 -- Bin.Wu@axis.com
--- version 1.0.0.1
--- 2016/01/11
+-- version 1.0.0.2
+-- 2016/01/12
 -- protocol name: PS (Program Stream) PS_RTP (Program Stream via RTP)
 -- ================================================================================================
 --	how to use lua
@@ -58,6 +58,16 @@ f_PS.system_video_lock_flag = ProtoField.uint8("ps.system_video_lock_flag","syst
 f_PS.video_bound = ProtoField.uint8("ps.video_bound","video_bound", base.DEC, nil, 0x1F)
 f_PS.packet_rate_restriction_flag = ProtoField.uint8("ps.packet_rate_restriction_flag","packet_rate_restriction_flag", base.HEX, nil, 0x80)
 f_PS.reserved_bits = ProtoField.uint8("ps.reserved_bits","reserved_bits", base.HEX, nil, 0x7F)
+
+f_PS.packet_start_code_prefix = ProtoField.uint24("ps.packet_start_code_prefix", "packet_start_code_prefix", base.HEX)
+
+f_PS.map_stream_id = ProtoField.uint8("ps.map_stream_id", "map_stream_id", base.HEX)
+f_PS.program_stream_map_length = ProtoField.uint16("ps.program_stream_map_length", "program_stream_map_length")
+f_PS.current_next_indicator = ProtoField.uint8("ps.current_next_indicator", "current_next_indicator", base.HEX, nil, 0x80)
+f_PS.psm_reserved1 = ProtoField.uint8("ps.psm_reserved1", "psm_reserved1", base.HEX, nil, 0x60)
+f_PS.program_stream_map_version = ProtoField.uint8("ps.program_stream_map_version", "program_stream_map_version", base.HEX, nil, 0x1F)
+f_PS.psm_reserved2 = ProtoField.uint8("ps.psm_reserved2", "psm_reserved2", base.HEX, nil, 0xFE)
+f_PS.program_stream_info_length = ProtoField.uint16("ps.program_stream_info_length", "program_stream_info_length")
 
 
 function check_marker_bit(bitfield, range, pinfo, tree)
@@ -206,19 +216,50 @@ function pack_header(buffer, pinfo, tree)
 	
 	return next_buffer
 end
--- return: 1 for True, 0 for False
-function check_pacet_start_code_prefix(buffer)
-	if nil == buffer then
-		return 0
-	end
-	return 0	
+
+-- return: next buffer
+function program_stream_map(buffer, pinfo, tree)
+	local buffer_len = buffer:len()
+	local offset = 0
+	local stream_id = buffer:range(3, 1):uint()
+	local packet_length = buffer:range(4, 2):uint()
+
+	local system_header_tree = tree:add(p_PS, buffer:range(0, 6 + packet_length), "PES_packet")
+	tree:append_text(", PES_packet")
+	pinfo.cols.info:append(", PES_packet")
+
+	
 end
 -- return: next buffer
 function PES_packet(buffer, pinfo, tree)
 	local buffer_len = buffer:len()
 	local offset = 0
-	return nil
+
+	local stream_id = buffer:range(3, 1):uint()
+	local packet_length = buffer:range(4, 2):uint()
+	--if stream_id == 0xBC then
+		program_stream_map(buffer, pinfo, tree)
+	--end
+
+	if buffer_len == 6 + packet_length then
+		return nil
+	else
+		return buffer:range(6 + packet_length)
+	end
 end
+
+-- return: 1 for True, 0 for False
+function check_pacet_start_code_prefix(buffer)
+	if nil == buffer then
+		return 0
+	end
+	info(string.format("%d",  buffer:range(0, 3):uint()))
+	if buffer:range(0, 3):uint() == 0x000001 then
+		return 1
+	end
+	return 0	
+end
+
 
 -- construct tree
 function p_PS.dissector(buffer, pinfo, tree)
