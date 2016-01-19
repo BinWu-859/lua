@@ -1,7 +1,7 @@
 -- based on ITU-T Rec.H222.0
 -- Bin.Wu@axis.com
--- version 1.0.0.2
--- 2016/01/12
+-- version 1.0.0.3
+-- 2016/01/19
 -- protocol name: PS (Program Stream) PS_RTP (Program Stream via RTP)
 -- ================================================================================================
 --	how to use lua
@@ -16,6 +16,8 @@
 --		3.3 change "console.lua" to this lua file name
 --	4 close and restart wireshark. Go for Analyze->Enable Protocols. New protocol should be in the list.
 -- ================================================================================================
+-- Limitation:
+-- Only support ONE Mpeg Program Stream with each packet in order.
 
 function _Error(desc, range, pinfo, tree)
 	pinfo.cols.info:set(desc)
@@ -39,6 +41,8 @@ local SYSTEM_HEADER_START_CODE = 0x000001BB
 
 local p_PS = Proto("PS", "MPEG Promgram Stream")
 local f_PS = p_PS.fields
+
+f_PS.has_pack_header = ProtoField.bool("ps.has_pack_header", "has_pack_header")
 f_PS.pack_start_code = ProtoField.uint32("ps.pack_start_code","pack_start_code", base.HEX)
 f_PS.system_clock_reference_base_high_17bit = ProtoField.uint32("ps.system_clock_reference_base_high_17bit","system_clock_reference_base_high_17bit", base.HEX, nil, 0x3BFFF0)
 f_PS.system_clock_reference_base_low_16bit = ProtoField.uint32("ps.system_clock_reference_base_low_16bit","system_clock_reference_base_low_16bit", base.HEX, nil, 0xBFFF8)
@@ -47,6 +51,7 @@ f_PS.program_mux_rate = ProtoField.uint24("ps.program_mux_rate","program_mux_rat
 f_PS.reserved = ProtoField.uint8("ps.reserved","reserved", base.HEX, nil, 0xF8)
 f_PS.pack_stuffing_length = ProtoField.uint8("ps.pack_stuffing_length","pack_stuffing_length", base.DEC, nil, 0x07)
 
+f_PS.has_system_header = ProtoField.bool("ps.has_pack_header", "has_pack_header")
 f_PS.system_header_start_code = ProtoField.uint32("ps.system_header_start_code","system_header_start_code", base.HEX)
 f_PS.system_header_header_length = ProtoField.uint16("ps.system_header_header_length","system_header_header_length")
 f_PS.rate_bound = ProtoField.uint24("ps.rate_bound","rate_bound", base.DEC, nil, 0x7FFFFE)
@@ -61,11 +66,12 @@ f_PS.reserved_bits = ProtoField.uint8("ps.reserved_bits","reserved_bits", base.H
 
 f_PS.packet_start_code_prefix = ProtoField.uint24("ps.packet_start_code_prefix", "packet_start_code_prefix", base.HEX)
 
+f_PS.has_psm = ProtoField.bool("ps.has_psm", "has_psm")
 f_PS.map_stream_id = ProtoField.uint8("ps.map_stream_id", "map_stream_id", base.HEX)
-f_PS.program_stream_map_length = ProtoField.uint16("ps.program_stream_map_length", "program_stream_map_length")
+f_PS.psm_length = ProtoField.uint16("ps.psm_length", "psm_length")
 f_PS.current_next_indicator = ProtoField.uint8("ps.current_next_indicator", "current_next_indicator", base.HEX, nil, 0x80)
 f_PS.psm_reserved1 = ProtoField.uint8("ps.psm_reserved1", "psm_reserved1", base.HEX, nil, 0x60)
-f_PS.program_stream_map_version = ProtoField.uint8("ps.program_stream_map_version", "program_stream_map_version", base.HEX, nil, 0x1F)
+f_PS.psm_version = ProtoField.uint8("ps.psm_version", "psm_version", base.HEX, nil, 0x1F)
 f_PS.psm_reserved2 = ProtoField.uint8("ps.psm_reserved2", "psm_reserved2", base.HEX, nil, 0xFE)
 f_PS.program_stream_info_length = ProtoField.uint16("ps.program_stream_info_length", "program_stream_info_length")
 
@@ -78,27 +84,29 @@ end
 function deal_stream_id(buffer, pinfo, tree)
 	local stream_id = buffer:range(0, 1):uint()
 	tree:add(buffer:range(0, 1), string.format("stream_id: 0x%02x", stream_id))
-	if stream_id == 0x10111000 then
+	if stream_id == 0xB8 then -- 0x10111000
 		tree:append_text(", all audio streams")
-	elseif stream_id == 0x10111001 then
+	elseif stream_id == 0xB9 then -- 0x10111001
 		tree:append_text(", all video streams")
-	elseif stream_id <= 0x10111100 then 
-		_Warning(string.format("invalid stream_id: 0x%02x", stream_id))
+	elseif stream_id < 0xBC then -- 0x10111100
+		_Warning(string.format("invalid stream_id: 0x%02x", stream_id), buffer:range(0, 1), pinfo, tree)
 	end
 	
 end
 -- return: next buffer
-function system_header(buffer, pinfo, tree)
-	local buffer_len = buffer:len()
+function  system_header(buffer, pinfo, tree)
+	local header_len = 6 + buffer(4, 2):uint()
 	local offset = 0
 	local next_buffer = nil
 	
-	local system_header_tree = tree:add(p_PS, buffer:range(0, buffer(4, 2):uint()), "System Header")
+	local system_header_tree = tree:add(p_PS, buffer:range(0, header_len), "System Header")
+
 	tree:append_text(", System Header")
 	pinfo.cols.info:append(", SystemHeader")
 
 	-- Byte [0, 5]
-	system_header_tree:add(f_PS.system_header_start_code, buffer(offset, 4))
+	local start_code_tree = system_header_tree:add(f_PS.system_header_start_code, buffer(offset, 4))
+	start_code_tree:add(f_PS.has_system_header, buffer:range(0, 4), true)
 	offset = offset + 4
 	system_header_tree:add(f_PS.system_header_header_length, buffer(offset, 2))
 	offset = offset + 2
@@ -126,11 +134,11 @@ function system_header(buffer, pinfo, tree)
 	system_header_tree:add(f_PS.reserved_bits, buffer(offset, 1))
 	offset = offset + 1
 
-	while offset <  buffer_len and buffer:range(offset):bitfield(0) do
-		deal_stream_id(buffer:range(offset):tvb(), pinfo, tree)
+	while offset <  header_len and buffer:range(offset):bitfield(0) do
+		deal_stream_id(buffer:range(offset):tvb(), pinfo, system_header_tree)
 		offset = offset + 1
-		if buffer:range(offset):bitfield(0, 2) ~= 0x11 then
-			_Error(string.format("Bad Bits after stream_id"), buffer:range(offset, 1), pinfo, tree)
+		if buffer:range(offset):bitfield(0, 2) ~= 0x3 then
+			_Error(string.format("Bad Bits after stream_id"), buffer:range(offset, 1), pinfo, system_header_tree)
 		end		
 		system_header_tree:add(buffer:range(offset, 1), string.format("P-STD_buffer_bound_scale : %d", buffer(offset):bitfield(2)))
 		system_header_tree:add(buffer:range(offset, 2), string.format("P-STD_buffer_size_bound : %d", buffer(offset):bitfield(3, 13)))
@@ -146,6 +154,7 @@ function pack_header(buffer, pinfo, tree)
 	local buffer_len = buffer:len()
 	local offset = 0
 	local next_buffer = nil
+
 	-- A) If this packet is not pack header, just skip
 	if PACKET_START_CODE ~= buffer(offset, 4):uint() then
 		return buffer
@@ -172,7 +181,8 @@ function pack_header(buffer, pinfo, tree)
 	-- Byte[0, 3]
 	local pack_header_tree = tree:add(p_PS, buffer:range(0, pack_header_length), "Pack Header")
 	pinfo.cols.info:append(", PackHeader")
-	pack_header_tree:add(f_PS.pack_start_code, buffer(offset, 4))
+	local start_code_tree = pack_header_tree:add(f_PS.pack_start_code, buffer(offset, 4))
+	start_code_tree:add(f_PS.has_pack_header, buffer:range(0, 4), true)
 	offset = offset + 4
 	-- Byte[4, 9]
 	if buffer:range(offset):bitfield(0, 2) ~= 0x01 then
@@ -211,14 +221,26 @@ function pack_header(buffer, pinfo, tree)
 	next_buffer = buffer:range(offset):tvb()
 	-- system_header
 	if nextbits == SYSTEM_HEADER_START_CODE then
-		next_buffer = system_header(buffer, pinfo, pack_header_tree)
+		next_buffer = system_header(next_buffer, pinfo, pack_header_tree)
 	end
-	
+
 	return next_buffer
 end
 
--- return: next buffer
 function program_stream_map(buffer, pinfo, tree)
+	local buffer_len = buffer:len()
+	local offset = 0
+	local stream_id = buffer:range(3, 1):uint()
+	local packet_length = buffer:range(4, 2):uint()
+
+	local psm_tree = tree:add(p_PS, buffer:range(0, 6 + packet_length), "PSM")
+	tree:append_text(", PSM")
+	pinfo.cols.info:append(", PSM")
+	local start_code_tree = psm_tree:add(f_PS.map_stream_id, buffer(3, 1))
+	start_code_tree:add(f_PS.has_psm, buffer:range(0, 4), true)
+end
+
+function program_stream_map_o(buffer, pinfo, tree)
 	local buffer_len = buffer:len()
 	local offset = 0
 	local stream_id = buffer:range(3, 1):uint()
@@ -227,58 +249,128 @@ function program_stream_map(buffer, pinfo, tree)
 	local system_header_tree = tree:add(p_PS, buffer:range(0, 6 + packet_length), "PES_packet")
 	tree:append_text(", PES_packet")
 	pinfo.cols.info:append(", PES_packet")
-
 	
 end
+
+local still_on_working = 0 
+local last_working_luastr = nil
+local last_expected_length = 0
+local redisscet_expected_length = {}
+local redissect_buffer = {}
+
 -- return: next buffer
 function PES_packet(buffer, pinfo, tree)
 	local buffer_len = buffer:len()
-	local offset = 0
-
 	local stream_id = buffer:range(3, 1):uint()
 	local packet_length = buffer:range(4, 2):uint()
-	--if stream_id == 0xBC then
-		program_stream_map(buffer, pinfo, tree)
-	--end
 
-	if buffer_len == 6 + packet_length then
-		return nil
+	if buffer_len >= 6 + packet_length then
+		if stream_id == 0xBC then
+			program_stream_map(buffer, pinfo, tree)
+		else
+			program_stream_map_o(buffer, pinfo, tree)
+		end
+
+		if buffer_len == 6 + packet_length then
+			return nil
+		end
+
+		return buffer:range(6 + packet_length):tvb()
 	else
-		return buffer:range(6 + packet_length)
+		if redisscet_expected_length[pinfo.number] == nil then
+			still_on_working = 1
+			last_expected_length = 6 + packet_length
+			redisscet_expected_length[pinfo.number] = last_expected_length
+			last_working_luastr = buffer:raw()
+		end
+		return nil
 	end
 end
 
--- return: 1 for True, 0 for False
+-- return: bool
 function check_pacet_start_code_prefix(buffer)
 	if nil == buffer then
-		return 0
+		return false
 	end
-	info(string.format("%d",  buffer:range(0, 3):uint()))
 	if buffer:range(0, 3):uint() == 0x000001 then
-		return 1
+		return true
 	end
-	return 0	
+	return false	
 end
+-- return buffer
+function check_still_on_working(buffer, pinfo, tree)
+	if 0 == still_on_working and nil == redissect_buffer[pinfo.number] then
+		info("first dissection: defragment work")
+		redissect_buffer[pinfo.number] = true
+		return buffer
+	end
+	if nil == last_working_luastr and nil == redissect_buffer[pinfo.number] then
+		critical("should not happen")
+		return buffer
+	end
+	if redissect_buffer[pinfo.number] == true then
+		info("nice to C U header!")
+		return buffer
+	end
 
+	local expected_length = redisscet_expected_length[pinfo.number] or last_expected_length
+	local buffer_now_have
+	local buffer_now_have_length = 0
+	if redissect_buffer[pinfo.number] == nil then
+		last_working_luastr = last_working_luastr..buffer:raw()
+		redissect_buffer[pinfo.number] = false
+		buffer_now_have_length = #last_working_luastr
+		redisscet_expected_length[pinfo.number] = expected_length
+
+		if buffer_now_have_length >= expected_length then
+			redissect_buffer[pinfo.number] = last_working_luastr
+			still_on_working = 0
+			last_working_luastr = nil
+		end
+	else
+		if redissect_buffer[pinfo.number] ~= false then
+			local last_ba = ByteArray.new(redissect_buffer[pinfo.number], true)
+			buffer_now_have = last_ba:tvb("PES_packet")
+			buffer_now_have_length = buffer_now_have:len()
+		end
+	end
+
+
+	if buffer_now_have_length < expected_length then
+		tree:add(buffer:range(0, 0), string.format("reassembling PES_packet to size %d", expected_length))
+		return nil
+	else
+		return buffer_now_have
+	end
+end
 
 -- construct tree
 function p_PS.dissector(buffer, pinfo, tree)
 	pinfo.cols.protocol:set("PS")
-	local nextbuffer = buffer;
-	
-	-- Program Stream pack header
-	nextbuffer = pack_header(nextbuffer, pinfo, tree)
-	if nil == nextbuffer then
+	--info(string.format("p_PS.dissectorstill_on_working %d  %d visited %s", still_on_working, pinfo.number, tostring(pinfo.visited)))
+	buffer = check_still_on_working(buffer, pinfo, tree)
+	if nil == buffer then -- if the packet is one of segment, just pass 
 		return false
 	end
-	while 1 == check_pacet_start_code_prefix(nextbuffer) do
+	-- Program Stream pack header
+	buffer = pack_header(buffer, pinfo, tree)
+	if nil == buffer then -- some error occurs
+		return false
+	end
+	while check_pacet_start_code_prefix(buffer) do
 		-- PES packet
-		nextbuffer = PES_packet(nextbuffer, pinfo, tree)
+		buffer = PES_packet(buffer, pinfo, tree)
 	end
 	return true
 end
 
-
+function init_function ()
+	--info("init_function")
+	still_on_working = 0
+	last_working_luastr = nil
+	redissect_buffer = {}
+	redisscet_expected_length = {}
+end
 -- ------------------------------------------------------------------------------------------------
 --  PS_RTP
 -- ------------------------------------------------------------------------------------------------
@@ -287,7 +379,8 @@ local p_PS_RTP = Proto("PS_RTP", "MPEG Promgram Stream via RTP")
 function p_PS_RTP.dissector(buffer, pinfo, tree)
 	local size = Dissector.get("rtp"):call(buffer, pinfo, tree)
 	p_PS.dissector(buffer:range(size):tvb(), pinfo, tree)
+	return true
 end
-
+p_PS.init = init_function
 DissectorTable.get("udp.port"):add_for_decode_as(p_PS_RTP)
 DissectorTable.get("tcp.port"):add_for_decode_as(p_PS_RTP)
