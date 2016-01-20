@@ -1,6 +1,6 @@
 -- based on ITU-T Rec.H222.0
 -- Bin.Wu@axis.com
--- version 1.0.0.4
+-- version 1.0.0.5
 -- 2016/01/20
 -- protocol name: PS (Program Stream) PS_RTP (Program Stream via RTP)
 -- ================================================================================================
@@ -18,6 +18,9 @@
 -- ================================================================================================
 -- Limitation:
 -- Only support ONE Mpeg Program Stream with each packet in order.
+
+-- if sth goes wrong, change speed_mod_on to false and have an another try
+speed_mod_on = true
 
 function _Error(desc, range, pinfo, tree)
 	pinfo.cols.info:set(desc)
@@ -266,12 +269,16 @@ function PES_packet(buffer, pinfo, tree)
 	local packet_length = buffer:range(4, 2):uint()
 
 	if buffer_len >= 6 + packet_length then
-		if stream_id == 0xBC then
-			program_stream_map(buffer, pinfo, tree)
+		if speed_mod_on and not pinfo.visited then
+			-- nop
+			-- when speed_mod_on, only do assembling job, no deeper dissection
 		else
-			program_stream_map_o(buffer, pinfo, tree)
+			if stream_id == 0xBC then
+				program_stream_map(buffer, pinfo, tree)
+			else
+				program_stream_map_o(buffer, pinfo, tree)
+			end
 		end
-
 		if buffer_len == 6 + packet_length then
 			return nil
 		end
@@ -279,10 +286,9 @@ function PES_packet(buffer, pinfo, tree)
 		return buffer:range(6 + packet_length):tvb()
 	else
 		-- here comes an incompleted packet, start assembling in comming dissection
-		if redisscet_expected_length[pinfo.number] == nil then
+		if not pinfo.visited then
 			still_on_working = true
 			last_expected_length = 6 + packet_length
-			redisscet_expected_length[pinfo.number] = last_expected_length
 			last_working_luastr = buffer:raw()
 		end
 		return nil
@@ -317,40 +323,36 @@ function check_still_on_working(buffer, pinfo, tree)
 		-- means it does not need to assemble former data  
 		return buffer
 	end
-
-	local expected_length = redisscet_expected_length[pinfo.number] or last_expected_length
-	local buffer_now_have
-	local buffer_now_have_length = 0
+	
 	if redissect_buffer[pinfo.number] == nil then
 		-- first time processing dissection
 		-- when it is inner fragment packet, it will set false in redissect_buffer
 		last_working_luastr = last_working_luastr..buffer:raw()
 		redissect_buffer[pinfo.number] = false
-		buffer_now_have_length = #last_working_luastr
 		redisscet_expected_length[pinfo.number] = expected_length
 		-- otherwise, if it is the final fragment packet, redissect_buffer will used 
 		-- to record the entire packet data
-		if buffer_now_have_length >= expected_length then
+		if #last_working_luastr >= last_expected_length then
 			redissect_buffer[pinfo.number] = last_working_luastr
 			still_on_working = false
 			last_working_luastr = nil
+			if speed_mod_on then
+				-- wireshark may call dissector several times for each PDU, so it will save almost
+				-- half of time when just return nil in the first dissection round
+				return nil
+			else
+				return ByteArray.new(redissect_buffer[pinfo.number], true):tvb("PES_packet")
+			end
 		end
+		return nil
 	elseif redissect_buffer[pinfo.number] ~= false then
 		-- true value will be returned in former judgement
 		-- not equal to false means it contains a luastring
 		-- so the packet is the final segment, present it!
-		local last_ba = ByteArray.new(redissect_buffer[pinfo.number], true)
-		buffer_now_have = last_ba:tvb("PES_packet")
-		buffer_now_have_length = buffer_now_have:len()
+		return ByteArray.new(redissect_buffer[pinfo.number], true):tvb("PES_packet")
 	end
-
-
-	if buffer_now_have_length < expected_length then
-		tree:add(buffer:range(0, 0), string.format("reassembling PES_packet to size %d", expected_length))
-		return nil
-	else
-		return buffer_now_have
-	end
+	tree:add(buffer:range(0, 0), "fragment of PES_packet")
+	return nil
 end
 
 -- construct tree
@@ -378,7 +380,6 @@ function init_function ()
 	still_on_working = false
 	last_working_luastr = nil
 	redissect_buffer = {}
-	redisscet_expected_length = {}
 end
 -- ------------------------------------------------------------------------------------------------
 --  PS_RTP
