@@ -1,7 +1,7 @@
 -- based on ITU-T Rec.H222.0
 -- Bin.Wu@axis.com
--- version 1.0.0.3
--- 2016/01/19
+-- version 1.0.0.4
+-- 2016/01/20
 -- protocol name: PS (Program Stream) PS_RTP (Program Stream via RTP)
 -- ================================================================================================
 --	how to use lua
@@ -252,10 +252,11 @@ function program_stream_map_o(buffer, pinfo, tree)
 	
 end
 
-local still_on_working = 0 
+local still_on_working = false 
 local last_working_luastr = nil
 local last_expected_length = 0
 local redisscet_expected_length = {}
+-- 3 valid state/type with redissect_buffer elements: true false string
 local redissect_buffer = {}
 
 -- return: next buffer
@@ -277,8 +278,9 @@ function PES_packet(buffer, pinfo, tree)
 
 		return buffer:range(6 + packet_length):tvb()
 	else
+		-- here comes an incompleted packet, start assembling in comming dissection
 		if redisscet_expected_length[pinfo.number] == nil then
-			still_on_working = 1
+			still_on_working = true
 			last_expected_length = 6 + packet_length
 			redisscet_expected_length[pinfo.number] = last_expected_length
 			last_working_luastr = buffer:raw()
@@ -299,8 +301,10 @@ function check_pacet_start_code_prefix(buffer)
 end
 -- return buffer
 function check_still_on_working(buffer, pinfo, tree)
-	if 0 == still_on_working and nil == redissect_buffer[pinfo.number] then
-		info("first dissection: defragment work")
+	if false == still_on_working and nil == redissect_buffer[pinfo.number] then
+		-- info("first dissection: nice start")
+		-- a packet start with packet start code 0x000001
+		-- record the frame, so that it will pass through in further dissection
 		redissect_buffer[pinfo.number] = true
 		return buffer
 	end
@@ -309,7 +313,8 @@ function check_still_on_working(buffer, pinfo, tree)
 		return buffer
 	end
 	if redissect_buffer[pinfo.number] == true then
-		info("nice to C U header!")
+		-- whatever still_on_working is true or false, redissect_buffer with true
+		-- means it does not need to assemble former data  
 		return buffer
 	end
 
@@ -317,22 +322,26 @@ function check_still_on_working(buffer, pinfo, tree)
 	local buffer_now_have
 	local buffer_now_have_length = 0
 	if redissect_buffer[pinfo.number] == nil then
+		-- first time processing dissection
+		-- when it is inner fragment packet, it will set false in redissect_buffer
 		last_working_luastr = last_working_luastr..buffer:raw()
 		redissect_buffer[pinfo.number] = false
 		buffer_now_have_length = #last_working_luastr
 		redisscet_expected_length[pinfo.number] = expected_length
-
+		-- otherwise, if it is the final fragment packet, redissect_buffer will used 
+		-- to record the entire packet data
 		if buffer_now_have_length >= expected_length then
 			redissect_buffer[pinfo.number] = last_working_luastr
-			still_on_working = 0
+			still_on_working = false
 			last_working_luastr = nil
 		end
-	else
-		if redissect_buffer[pinfo.number] ~= false then
-			local last_ba = ByteArray.new(redissect_buffer[pinfo.number], true)
-			buffer_now_have = last_ba:tvb("PES_packet")
-			buffer_now_have_length = buffer_now_have:len()
-		end
+	elseif redissect_buffer[pinfo.number] ~= false then
+		-- true value will be returned in former judgement
+		-- not equal to false means it contains a luastring
+		-- so the packet is the final segment, present it!
+		local last_ba = ByteArray.new(redissect_buffer[pinfo.number], true)
+		buffer_now_have = last_ba:tvb("PES_packet")
+		buffer_now_have_length = buffer_now_have:len()
 	end
 
 
@@ -347,7 +356,7 @@ end
 -- construct tree
 function p_PS.dissector(buffer, pinfo, tree)
 	pinfo.cols.protocol:set("PS")
-	--info(string.format("p_PS.dissectorstill_on_working %d  %d visited %s", still_on_working, pinfo.number, tostring(pinfo.visited)))
+	--info(string.format("p_PS.dissectorstill_on_working %s  %d visited %s", tostring(still_on_working), pinfo.number, tostring(pinfo.visited)))
 	buffer = check_still_on_working(buffer, pinfo, tree)
 	if nil == buffer then -- if the packet is one of segment, just pass 
 		return false
@@ -366,7 +375,7 @@ end
 
 function init_function ()
 	--info("init_function")
-	still_on_working = 0
+	still_on_working = false
 	last_working_luastr = nil
 	redissect_buffer = {}
 	redisscet_expected_length = {}
