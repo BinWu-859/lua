@@ -1,6 +1,6 @@
 -- based on ITU-T Rec.H222.0(2000)
 -- Bin.Wu@axis.com
--- version 1.0.0.7
+-- version 1.0.0.8
 -- 2016/01/21
 -- protocol name: PS (Program Stream) PS_RTP (Program Stream via RTP)
 -- ================================================================================================
@@ -38,7 +38,7 @@ end
 -- ------------------------------------------------------------------------------------------------
 --  PS
 -- ------------------------------------------------------------------------------------------------
--- Csonstants
+-- Constants
 local PACKET_START_CODE = 0x000001BA
 local SYSTEM_HEADER_START_CODE = 0x000001BB
 
@@ -46,26 +46,28 @@ local p_PS = Proto("PS", "MPEG Promgram Stream")
 local f_PS = p_PS.fields
 
 f_PS.has_pack_header = ProtoField.bool("ps.has_pack_header", "has_pack_header")
-f_PS.pack_start_code = ProtoField.uint32("ps.pack_start_code","pack_start_code", base.HEX)
-f_PS.system_clock_reference_base_high_17bit = ProtoField.uint32("ps.system_clock_reference_base_high_17bit","system_clock_reference_base_high_17bit", base.HEX, nil, 0x3BFFF0)
-f_PS.system_clock_reference_base_low_16bit = ProtoField.uint32("ps.system_clock_reference_base_low_16bit","system_clock_reference_base_low_16bit", base.HEX, nil, 0xBFFF8)
-f_PS.system_clock_reference_extension = ProtoField.uint16("ps.system_clock_reference_extension","system_clock_reference_extension", base.HEX, nil, 0x3FE)
-f_PS.program_mux_rate = ProtoField.uint24("ps.program_mux_rate","program_mux_rate", base.DEC, nil, 0xFFFFFC)
-f_PS.reserved = ProtoField.uint8("ps.reserved","reserved", base.HEX, nil, 0xF8)
-f_PS.pack_stuffing_length = ProtoField.uint8("ps.pack_stuffing_length","pack_stuffing_length", base.DEC, nil, 0x07)
+f_PS.pack_start_code = ProtoField.uint32("ps.pack_start_code", "pack_start_code", base.HEX)
+f_PS.system_clock_reference_base = ProtoField.uint64("ps.system_clock_reference_base", "system_clock_reference_base", base.HEX)
+f_PS.system_clock_reference_base_bit_32_30 = ProtoField.uint8("ps.system_clock_reference_base_bit_32_30", "system_clock_reference_base_bit_32_30", base.HEX, nil, 0x38)
+f_PS.system_clock_reference_base_bit_29_15 = ProtoField.uint32("ps.system_clock_reference_base_bit_29_15", "system_clock_reference_base_bit_29_15", base.HEX, nil, 0x3FFF8)
+f_PS.system_clock_reference_base_bit_14_0 = ProtoField.uint32("ps.system_clock_reference_base_bit_14_0", "system_clock_reference_base_bit_14_0", base.HEX, nil, 0x3FFF8)
+f_PS.system_clock_reference_extension = ProtoField.uint16("ps.system_clock_reference_extension", "system_clock_reference_extension", base.HEX, nil, 0x3FE)
+f_PS.program_mux_rate = ProtoField.uint24("ps.program_mux_rate", "program_mux_rate", base.DEC, nil, 0xFFFFFC)
+f_PS.reserved = ProtoField.uint8("ps.reserved", "reserved", base.HEX, nil, 0xF8)
+f_PS.pack_stuffing_length = ProtoField.uint8("ps.pack_stuffing_length", "pack_stuffing_length", base.DEC, nil, 0x07)
 
 f_PS.has_system_header = ProtoField.bool("ps.has_pack_header", "has_pack_header")
-f_PS.system_header_start_code = ProtoField.uint32("ps.system_header_start_code","system_header_start_code", base.HEX)
-f_PS.system_header_header_length = ProtoField.uint16("ps.system_header_header_length","system_header_header_length")
-f_PS.rate_bound = ProtoField.uint24("ps.rate_bound","rate_bound", base.DEC, nil, 0x7FFFFE)
-f_PS.audio_bound = ProtoField.uint8("ps.audio_bound","audio_bound", base.DEC, nil, 0xFC)
-f_PS.fixed_flag = ProtoField.uint8("ps.fixed_flag","fixed_flag", base.HEX, {[0]="Variable Bitrate", [1]="Fixed Bitrate"}, 0x02)
-f_PS.CSPS_flag = ProtoField.uint8("ps.CSPS_flag","CSPS_flag", base.HEX, {[0]="CSPS Off", [1]="CSPS On"}, 0x01)
-f_PS.system_audio_lock_flag = ProtoField.uint8("ps.system_audio_lock_flag","system_audio_lock_flag", base.HEX, {[0]="Audio Lock Off", [1]="Audio Lock On"}, 0x80)
-f_PS.system_video_lock_flag = ProtoField.uint8("ps.system_video_lock_flag","system_video_lock_flag", base.HEX, {[0]="Video Lock Off", [1]="Video Lock On"}, 0x40)
-f_PS.video_bound = ProtoField.uint8("ps.video_bound","video_bound", base.DEC, nil, 0x1F)
-f_PS.packet_rate_restriction_flag = ProtoField.uint8("ps.packet_rate_restriction_flag","packet_rate_restriction_flag", base.HEX, nil, 0x80)
-f_PS.reserved_bits = ProtoField.uint8("ps.reserved_bits","reserved_bits", base.HEX, nil, 0x7F)
+f_PS.system_header_start_code = ProtoField.uint32("ps.system_header_start_code", "system_header_start_code", base.HEX)
+f_PS.system_header_header_length = ProtoField.uint16("ps.system_header_header_length", "system_header_header_length")
+f_PS.rate_bound = ProtoField.uint24("ps.rate_bound", "rate_bound", base.DEC, nil, 0x7FFFFE)
+f_PS.audio_bound = ProtoField.uint8("ps.audio_bound", "audio_bound", base.DEC, nil, 0xFC)
+f_PS.fixed_flag = ProtoField.uint8("ps.fixed_flag", "fixed_flag", base.HEX, {[0]="Variable Bitrate", [1]="Fixed Bitrate"}, 0x02)
+f_PS.CSPS_flag = ProtoField.uint8("ps.CSPS_flag", "CSPS_flag", base.HEX, {[0]="CSPS Off", [1]="CSPS On"}, 0x01)
+f_PS.system_audio_lock_flag = ProtoField.uint8("ps.system_audio_lock_flag", "system_audio_lock_flag", base.HEX, {[0]="Audio Lock Off", [1]="Audio Lock On"}, 0x80)
+f_PS.system_video_lock_flag = ProtoField.uint8("ps.system_video_lock_flag", "system_video_lock_flag", base.HEX, {[0]="Video Lock Off", [1]="Video Lock On"}, 0x40)
+f_PS.video_bound = ProtoField.uint8("ps.video_bound", "video_bound", base.DEC, nil, 0x1F)
+f_PS.packet_rate_restriction_flag = ProtoField.uint8("ps.packet_rate_restriction_flag", "packet_rate_restriction_flag", base.HEX, nil, 0x80)
+f_PS.reserved_bits = ProtoField.uint8("ps.reserved_bits", "reserved_bits", base.HEX, nil, 0x7F)
 
 f_PS.packet_start_code_prefix = ProtoField.uint24("ps.packet_start_code_prefix", "packet_start_code_prefix", base.HEX)
 
@@ -84,6 +86,64 @@ f_PS.stream_id = ProtoField.uint8("ps.stream_id", "stream_id", base.HEX)
 f_PS.PES_packet_length = ProtoField.uint16("ps.PES_packet_length", "PES_packet_length")
 f_PS.PES_packet_data_byte = ProtoField.bytes("ps.PES_packet_data_byte", "PES_packet_data_byte")
 f_PS.padding_byte = ProtoField.bytes("ps.padding_byte", "padding_byte")
+f_PS.video_stream_number = ProtoField.uint8("ps.video_stream_number", "video_stream_number", base.HEX, nil, 0x0F)
+f_PS.audio_stream_number = ProtoField.uint8("ps.audio_stream_number", "audio_stream_number", base.HEX, nil, 0x1F)
+f_PS.has_video = ProtoField.bool("ps.has_video", "has_video")
+f_PS.has_audio = ProtoField.bool("ps.has_audio", "has_audio")
+f_PS.PES_scrambling_control = ProtoField.uint8("ps.PES_scrambling_control", "PES_scrambling_control", base.HEX, {[0x00]="Not Scrambled", [0x01] = "User Defined"
+								, [0x10] = "User Defined", [0x11] = "User Defined"}, 0x30)
+f_PS.PES_priority = ProtoField.uint8("ps.PES_priority", "PES_priority", base.HEX, nil, 0x08)
+f_PS.data_alignment_indicator = ProtoField.uint8("ps.data_alignment_indicator", "data_alignment_indicator", base.HEX, nil, 0x04)
+f_PS.copyright = ProtoField.uint8("ps.copyright", "copyright", base.HEX, nil, 0x02)
+f_PS.original_or_copy = ProtoField.uint8("ps.original_or_copy", "original_or_copy", base.HEX, nil, 0x01)
+f_PS.PTS_DTS_flags = ProtoField.uint8("ps.PTS_DTS_flags", "PTS_DTS_flags", base.HEX, nil, 0xC0)
+f_PS.ESCR_flag = ProtoField.uint8("ps.ESCR_flag", "ESCR_flag", base.HEX, nil, 0x20)
+f_PS.ES_rate_flag = ProtoField.uint8("ps.ES_rate_flag", "ES_rate_flag", base.HEX, nil, 0x10)
+f_PS.DSM_trick_mode_flag = ProtoField.uint8("ps.DSM_trick_mode_flag", "DSM_trick_mode_flag", base.HEX, nil, 0x08)
+f_PS.additional_copy_info_flag = ProtoField.uint8("ps.additional_copy_info_flag", "additional_copy_info_flag", base.HEX, nil, 0x04)
+f_PS.PES_CRC_flag = ProtoField.uint8("ps.PES_CRC_flag", "PES_CRC_flag", base.HEX, nil, 0x02)
+f_PS.PES_extension_flag = ProtoField.uint8("ps.PES_extension_flag", "PES_extension_flag", base.HEX, nil, 0x01)
+f_PS.PES_header_data_length = ProtoField.uint8("ps.PES_header_data_length", "PES_header_data_length")
+
+f_PS.PTS = ProtoField.uint64("ps.PTS", "PTS", base.HEX)
+f_PS.PTS_bit_32_30 = ProtoField.uint8("ps.PTS_bit_32_30", "PTS_bit_32_30", base.HEX, nil, 0x0E)
+f_PS.PTS_bit_29_15 = ProtoField.uint16("ps.PTS_bit_29_15", "PTS_bit_29_15", base.HEX, nil, 0xFFFE)
+f_PS.PTS_bit_14_0 = ProtoField.uint16("ps.PTS_bit_14_0", "PTS_bit_14_0", base.HEX, nil, 0xFFFE)
+f_PS.DTS = ProtoField.uint64("ps.DTS", "DTS", base.HEX)
+f_PS.DTS_bit_32_30 = ProtoField.uint8("ps.DTS_bit_32_30", "DTS_bit_32_30", base.HEX, nil, 0x0E)
+f_PS.DTS_bit_29_15 = ProtoField.uint16("ps.DTS_bit_29_15", "DTS_bit_29_15", base.HEX, nil, 0xFFFE)
+f_PS.DTS_bit_14_0 = ProtoField.uint16("ps.DTS_bit_14_0", "DTS_bit_14_0", base.HEX, nil, 0xFFFE)
+
+f_PS.ESCR_reserved = ProtoField.uint64("ps.ESCR_reserved", "ESCR_reserved", base.HEX, nil, 0xC0)
+f_PS.ESCR_base = ProtoField.uint64("ps.ESCR_base", "ESCR_base", base.HEX)
+f_PS.ESCR_base_bit_32_30 = ProtoField.uint8("ps.ESCR_base_bit_32_30", "ESCR_base_bit_32_30", base.HEX, nil, 0x38)
+f_PS.ESCR_base_bit_29_15 = ProtoField.uint32("ps.ESCR_base_bit_29_15", "ESCR_base_bit_29_15", base.HEX, nil, 0x3FFF8)
+f_PS.ESCR_base_bit_14_0 = ProtoField.uint32("ps.ESCR_base_bit_14_0", "ESCR_base_bit_14_0", base.HEX, nil, 0x3FFF8)
+f_PS.ESCR_extension = ProtoField.uint16("ps.system_clock_reference_extension", "system_clock_reference_extension", base.HEX, nil, 0x3FE)
+
+f_PS.ES_rate = ProtoField.uint24("ps.ES_rate", "ES_rate", base.HEX, nil, 0x7FFFFE)
+
+local trick_mode_control_name = {
+[0x0] = "Fast Forward",
+[0x1] = "Slow Motion",
+[0x2] = "Freeze Frame",
+[0x3] = "Fast Reverse",
+[0x4] = "Slow Reverse",}
+f_PS.trick_mode_control = ProtoField.uint8("ps.trick_mode_control", "trick_mode_control", base.HEX, trick_mode_control_name, 0xE0)
+f_PS.trick_mode_control_field_id = ProtoField.uint8("ps.trick_mode_control_field_id", "field_id", base.HEX, {[0]="Display from topo field only", [1] = "Display from bottom field only",
+									[2] = "Display complete frame", [3] = "Reserved"}, 0x18)
+f_PS.trick_mode_control_intra_slice_refresh = ProtoField.uint8("ps.trick_mode_control_intra_slice_refresh", "intra_slice_refresh", base.HEX, nil, 0x04)
+f_PS.trick_mode_control_frequency_truncation = ProtoField.uint8("ps.trick_mode_control_frequency_truncation", "frequency_truncation", base.HEX, {[0]="Only DC co non-zero",
+									[1] = "Only the first three co non-zero", [2] = "Only the first six co non-zero", [3] = "All co non-zeros"}, 0x03)
+f_PS.trick_mode_control_rep_cntrl = ProtoField.uint8("ps.trick_mode_control_rep_cntrl", "rep_cntrl", base.HEX, nil, 0x1F)
+f_PS.trick_mode_control_reserved3 = ProtoField.uint8("ps.trick_mode_control_reserved3", "reserved", base.HEX, nil, 0x07)
+f_PS.trick_mode_control_reserved5 = ProtoField.uint8("ps.trick_mode_control_reserved5", "reserved", base.HEX, nil, 0x1F)
+
+f_PS.additional_copy_info = ProtoField.uint8("ps.additional_copy_info", "additional_copy_info", base.HEX, nil, 0x7F)
+
+f_PS.previous_PES_packet_CRC = ProtoField.bytes("ps.previous_PES_packet_CRC", "previous_PES_packet_CRC")
+
+
 function check_marker_bit(bitfield, range, pinfo, tree)
 	if bitfield ~= 1 then
 		_Warning(string.format("miss bit field"), range, pinfo, tree)
@@ -112,30 +172,30 @@ function  system_header(buffer, pinfo, tree)
 	local system_header_tree = tree:add(p_PS, buffer(0, header_len), "System Header")
 	pinfo.cols.info:append(", SystemHeader")
 
-	-- Byte [0, 5]
+	-- Byte[0, 5]
 	local start_code_tree = system_header_tree:add(f_PS.system_header_start_code, buffer(offset, 4))
 	start_code_tree:add(f_PS.has_system_header, buffer(0, 4), true)
 	offset = offset + 4
 	system_header_tree:add(f_PS.system_header_header_length, buffer(offset, 2))
 	offset = offset + 2
-	-- Byte [6, 8]
+	-- Byte[6, 8]
 	check_marker_bit(buffer(offset):bitfield(0), buffer(offset, 1), pinfo, tree)
 	check_marker_bit(buffer(offset):bitfield(23), buffer(offset + 2, 1), pinfo, tree)
 	system_header_tree:add(f_PS.rate_bound, buffer(offset, 3))
 	offset = offset + 3
-	-- Byte [9, 9]
+	-- Byte[9, 9]
 	system_header_tree:add(f_PS.audio_bound, buffer(offset, 1))
 	system_header_tree:add(f_PS.fixed_flag, buffer(offset, 1))
 	system_header_tree:add(f_PS.CSPS_flag, buffer(offset, 1))
 	local CSPS_flag = buffer(offset, 1):bitfield(7, 1)
 	offset = offset + 1
-	-- Byte [10, 10]
+	-- Byte[10, 10]
 	check_marker_bit(buffer(offset):bitfield(2), buffer(offset, 1), pinfo, tree)
 	system_header_tree:add(f_PS.system_audio_lock_flag, buffer(offset, 1))
 	system_header_tree:add(f_PS.system_video_lock_flag, buffer(offset, 1))
 	system_header_tree:add(f_PS.video_bound, buffer(offset, 1))
 	offset = offset + 1
-	-- Byte [11, 11]
+	-- Byte[11, 11]
 	if 1 == CSPS_flag then
 		system_header_tree:add(f_PS.packet_rate_restriction_flag, buffer(offset, 1))
 	end
@@ -194,7 +254,7 @@ function pack_header(buffer, pinfo, tree)
 	start_code_tree:add(f_PS.has_pack_header, buffer(0, 4), true)
 	offset = offset + 4
 	-- Byte[4, 9]
-	if buffer(offset):bitfield(0, 2) ~= 0x01 then
+	if buffer(offset):bitfield(0, 2) ~= 0x1 then
 		_Error(string.format("Bad Bits after pack_start_code"), buffer(offset, 1), pinfo, tree)
 	end
 	check_marker_bit(buffer(offset):bitfield(5), buffer(offset, 1), pinfo, tree)
@@ -202,12 +262,15 @@ function pack_header(buffer, pinfo, tree)
 	check_marker_bit(buffer(offset):bitfield(37), buffer(offset + 3, 1), pinfo, tree)
 	check_marker_bit(buffer(offset):bitfield(47), buffer(offset + 4, 1), pinfo, tree)
 
-	-- TODO: [Bin Wu]64bit mask is not working properly. So if wireshark gets updated, some promotion can be done 
-	--       to this part for "system clock reference base"
-	pack_header_tree:add(f_PS.system_clock_reference_base_high_17bit, buffer(offset, 3))
-	offset = offset + 2
-	pack_header_tree:add(f_PS.system_clock_reference_base_low_16bit, buffer(offset, 3))
-	offset = offset + 2
+	local clock_high = buffer(offset):bitfield(2, 1)
+	local clock_low = buffer(offset):bitfield(3, 2) * 0x40000000
+	clock_low = clock_low + buffer(offset):bitfield(6, 15) * 0x00008000
+	clock_low = clock_low + buffer(offset):bitfield(22, 15)
+	local system_clock_reference_base_tree = pack_header_tree:add(f_PS.system_clock_reference_base, buffer(offset, 5), UInt64.new(clock_low, clock_high))
+	system_clock_reference_base_tree:add(f_PS.system_clock_reference_base_bit_32_30, buffer(offset, 1))
+	system_clock_reference_base_tree:add(f_PS.system_clock_reference_base_bit_29_15, buffer(offset, 3))
+	system_clock_reference_base_tree:add(f_PS.system_clock_reference_base_bit_14_0, buffer(offset + 2, 3))
+	offset = offset + 4
 	pack_header_tree:add(f_PS.system_clock_reference_extension,  buffer(offset, 2))
 	offset = offset + 2
 	-- Byte[10, 12]
@@ -434,13 +497,15 @@ function deal_av_stream_id(buffer, pinfo, tree, root)
 	if stream_id >= 0xC0 and stream_id <= 0xDF then
 		-- audio
 		local audio_id = buffer(0):bitfield(3, 5)
-		tree:add(buffer(0, 1), string.format("audio_stream_number: %d(0x%02x)", audio_id, audio_id))
+		tree:add(f_PS.audio_stream_number, buffer(0, 1))
+		tree:add(f_PS.has_audio, buffer(0, 1), true)
 		pinfo.cols.info:append(string.format("_audio_%d", audio_id));
 		root:append_text(string.format("_audio_%d", audio_id))
 	elseif stream_id >= 0xE0 and stream_id <= 0xEF then
 		-- video
 		local video_id = buffer(0):bitfield(4, 4)
-		tree:add(buffer(0, 1), string.format("video_stream_number: %d(0x%02x)", video_id, video_id))
+		tree:add(f_PS.video_stream_number, buffer(0, 1))
+		tree:add(f_PS.has_video, buffer(0, 1), true)
 		pinfo.cols.info:append(string.format("_video_%d", video_id));
 		root:append_text(string.format("_video_%d", video_id))
 	end
@@ -462,6 +527,144 @@ function with_PES_header(buffer, pinfo, tree)
 	
 	header_tree:add(f_PS.PES_packet_length, buffer(offset, 2))
 	offset = offset + 2
+	if buffer(offset):bitfield(0, 2) ~= 0x2 then
+		_Error(string.format("Bad Bits after PES_packet_length"), buffer(offset, 1), pinfo, header_tree)
+	end
+	-- Byte[6, 6]
+	header_tree:add(f_PS.PES_scrambling_control, buffer(offset, 1))
+	header_tree:add(f_PS.PES_priority, buffer(offset, 1))
+	header_tree:add(f_PS.data_alignment_indicator, buffer(offset, 1))
+	header_tree:add(f_PS.copyright, buffer(offset, 1))
+	header_tree:add(f_PS.original_or_copy, buffer(offset, 1))
+	offset = offset + 1
+	-- Byte[7, 7]
+	local all_flags = buffer(offset, 1):uint()
+	header_tree:add(f_PS.PTS_DTS_flags, buffer(offset, 1))
+	local PTS_DTS_flags = buffer(offset):bitfield(0, 2)
+	if 0x1 == PTS_DTS_flags then
+		_Error(string.format("Forbiddened PTS_DTS_flags value"), buffer(offset, 1), pinfo, header_tree)
+	end
+	header_tree:add(f_PS.ESCR_flag, buffer(offset, 1))
+	local ESCR_flag = buffer(offset):bitfield(2, 1)
+	header_tree:add(f_PS.ES_rate_flag, buffer(offset, 1))
+	local ES_rate_flag = buffer(offset):bitfield(3, 1)
+	header_tree:add(f_PS.DSM_trick_mode_flag, buffer(offset, 1))
+	local DSM_trick_mode_flag = buffer(offset):bitfield(4, 1)
+	header_tree:add(f_PS.additional_copy_info_flag, buffer(offset, 1))
+	local additional_copy_info_flag = buffer(offset):bitfield(5, 1)
+	header_tree:add(f_PS.PES_CRC_flag, buffer(offset, 1))
+	local PES_CRC_flag = buffer(offset):bitfield(6, 1)
+	header_tree:add(f_PS.PES_extension_flag, buffer(offset, 1))
+	local PES_CRC_flag = buffer(offset):bitfield(7, 1)
+	offset = offset + 1
+	-- Byte[8, 8]
+	header_tree:add(f_PS.PES_header_data_length, buffer(offset, 1))
+	local PES_header_data_length = buffer(offset, 1):uint()
+	offset = offset + 1
+	-- optional fields
+	if all_flags ~= 0 then
+		local optional_fields_tree = header_tree:add(buffer(offset, PES_header_data_length), "optional_fields")
+		-- PTS_DTS_flags PTS
+		if 0x2 <= PTS_DTS_flags then
+			if buffer(offset):bitfield(0, 4) ~= PTS_DTS_flags then
+				_Error(string.format("Bad Bits in PTS_DTS_flags field"), buffer(offset, 1), pinfo, header_tree)
+			end
+			check_marker_bit(buffer(offset):bitfield(7), buffer(offset, 1), pinfo, optional_fields_tree)
+			check_marker_bit(buffer(offset):bitfield(23), buffer(offset + 2, 1), pinfo, optional_fields_tree)
+			check_marker_bit(buffer(offset):bitfield(39), buffer(offset + 4, 1), pinfo, optional_fields_tree)
+
+			local PTS_high = buffer(offset):bitfield(4, 1)
+			local PTS_low = buffer(offset):bitfield(5, 2) * 0x40000000
+			PTS_low = PTS_low + buffer(offset):bitfield(8, 15) * 0x00008000
+			PTS_low = PTS_low + buffer(offset):bitfield(24, 15)
+			
+			local PTS_tree = optional_fields_tree:add(f_PS.PTS, buffer(offset, 5), UInt64.new(PTS_low, PTS_high))
+			PTS_tree:add(f_PS.PTS_bit_32_30, buffer(offset, 1))
+			PTS_tree:add(f_PS.PTS_bit_29_15, buffer(offset + 1, 2))
+			PTS_tree:add(f_PS.PTS_bit_14_0, buffer(offset + 3, 2))
+			offset = offset + 5
+		end
+		-- PTS_DTS_flags DTS
+		if 0x3 == PTS_DTS_flags then
+			if buffer(offset):bitfield(0, 4) ~= 0x01 then
+				_Error(string.format("Bad Bits in PTS_DTS_flags field"), buffer(offset, 1), pinfo, header_tree)
+			end
+			check_marker_bit(buffer(offset):bitfield(7), buffer(offset, 1), pinfo, optional_fields_tree)
+			check_marker_bit(buffer(offset):bitfield(23), buffer(offset + 2, 1), pinfo, optional_fields_tree)
+			check_marker_bit(buffer(offset):bitfield(39), buffer(offset + 4, 1), pinfo, optional_fields_tree)
+			
+			local DTS_high = buffer(offset):bitfield(4, 1)
+			local DTS_low = buffer(offset):bitfield(5, 2) * 0x40000000
+			DTS_low = DTS_low + buffer(offset):bitfield(8, 15) * 0x00008000
+			DTS_low = DTS_low + buffer(offset):bitfield(24, 15)
+			
+			local DTS_tree = optional_fields_tree:add(f_PS.DTS, buffer(offset, 5), UInt64.new(DTS_low, DTS_high))
+			DTS_tree:add(f_PS.DTS_bit_32_30, buffer(offset, 1))
+			DTS_tree:add(f_PS.DTS_bit_29_15, buffer(offset + 1, 2))
+			DTS_tree:add(f_PS.DTS_bit_14_0, buffer(offset + 3, 2))
+			offset = offset + 5
+		end
+		-- ESCR_flag
+		if 1 == ESCR_flag then
+			DTS_tree:add(f_PS.ESCR_reserved, buffer(offset, 1))
+			check_marker_bit(buffer(offset):bitfield(5), buffer(offset, 1), pinfo, optional_fields_tree)
+			check_marker_bit(buffer(offset):bitfield(21), buffer(offset + 2, 1), pinfo, optional_fields_tree)
+			check_marker_bit(buffer(offset):bitfield(37), buffer(offset + 3, 1), pinfo, optional_fields_tree)
+			check_marker_bit(buffer(offset):bitfield(47), buffer(offset + 4, 1), pinfo, optional_fields_tree)
+
+			local clock_high = buffer(offset):bitfield(2, 1)
+			local clock_low = buffer(offset):bitfield(3, 2) * 0x40000000
+			clock_low = clock_low + buffer(offset):bitfield(6, 15) * 0x00008000
+			clock_low = clock_low + buffer(offset):bitfield(22, 15)
+			local ESCR_base_tree = pack_header_tree:add(f_PS.ESCR_base, buffer(offset, 5), UInt64.new(clock_low, clock_high))
+			ESCR_base_tree:add(f_PS.ESCR_base_bit_32_30, buffer(offset, 1))
+			ESCR_base_tree:add(f_PS.ESCR_base_bit_29_15, buffer(offset, 3))
+			ESCR_base_tree:add(f_PS.ESCR_base_bit_14_0, buffer(offset + 2, 3))
+			offset = offset + 4
+			pack_header_tree:add(f_PS.ESCR_extension,  buffer(offset, 2))
+			offset = offset + 2	
+		end
+		-- ES_rate_flag
+		if 1 == ES_rate_flag then
+			check_marker_bit(buffer(offset):bitfield(0), buffer(offset, 1), pinfo, optional_fields_tree)
+			check_marker_bit(buffer(offset):bitfield(23), buffer(offset + 2, 1), pinfo, optional_fields_tree)
+			optional_fields_tree:add(f_PS.ES_rate, buffer(offset, 3))
+			offset = offset + 3
+		end
+		-- DSM_trick_mode_flag
+		if 1 == DSM_trick_mode_flag then
+			optional_fields_tree:add(f_PS.trick_mode_control, buffer(offset, 1))
+			local trick_mode_control = buffer(offset):bitfield(0, 3)
+			if trick_mode_control == 0 or trick_mode_control == 3 then
+				optional_fields_tree:add(f_PS.trick_mode_control_field_id, buffer(offset, 1))
+				optional_fields_tree:add(f_PS.trick_mode_control_intra_slice_refresh, buffer(offset, 1))
+				optional_fields_tree:add(f_PS.trick_mode_control_frequency_truncation, buffer(offset, 1))
+			elseif trick_mode_control == 1 or trick_mode_control == 4 then
+				optional_fields_tree:add(f_PS.trick_mode_control_rep_cntrl, buffer(offset, 1))
+			elseif trick_mode_control == 2 then
+				optional_fields_tree:add(f_PS.trick_mode_control_field_id, buffer(offset, 1))
+				optional_fields_tree:add(f_PS.trick_mode_control_reserved3, buffer(offset, 1))
+			else
+				optional_fields_tree:add(f_PS.trick_mode_control_reserved5, buffer(offset, 1))
+			end
+			offset = offset + 1
+		end
+		-- additional_copy_info_flag
+		if 1 == additional_copy_info_flag then
+			check_marker_bit(buffer(offset):bitfield(0), buffer(offset, 1), pinfo, optional_fields_tree)
+			optional_fields_tree:add(f_PS.additional_copy_info, buffer(offset, 1))
+			offset = offset + 1
+		end
+		-- PES_CRC_flag
+		if 1 == PES_CRC_flag then
+			optional_fields_tree:add(f_PS.previous_PES_packet_CRC, buffer(offset, 2))
+			offset = offset + 2
+		end
+		-- PES_extension_flag
+		if 1 == PES_extension_flag then
+
+		end
+	end
 end
 
 function without_PES_header(buffer, pinfo, tree)
