@@ -1,7 +1,7 @@
--- based on ITU-T Rec.H222.0
+-- based on ITU-T Rec.H222.0(2000)
 -- Bin.Wu@axis.com
--- version 1.0.0.6
--- 2016/01/20
+-- version 1.0.0.7
+-- 2016/01/21
 -- protocol name: PS (Program Stream) PS_RTP (Program Stream via RTP)
 -- ================================================================================================
 --	how to use lua
@@ -78,8 +78,12 @@ f_PS.program_stream_map_version = ProtoField.uint8("ps.program_stream_map_versio
 f_PS.psm_reserved2 = ProtoField.uint8("ps.psm_reserved2", "psm_reserved2", base.HEX, nil, 0xFE)
 f_PS.program_stream_info_length = ProtoField.uint16("ps.program_stream_info_length", "program_stream_info_length")
 f_PS.elementary_stream_map_length = ProtoField.uint16("ps.elementary_stream_map_length", "elementary_stream_map_length")
+f_PS.psm_crc = ProtoField.bytes("ps.psm_crc", "crc")
 
-
+f_PS.stream_id = ProtoField.uint8("ps.stream_id", "stream_id", base.HEX)
+f_PS.PES_packet_length = ProtoField.uint16("ps.PES_packet_length", "PES_packet_length")
+f_PS.PES_packet_data_byte = ProtoField.bytes("ps.PES_packet_data_byte", "PES_packet_data_byte")
+f_PS.padding_byte = ProtoField.bytes("ps.padding_byte", "padding_byte")
 function check_marker_bit(bitfield, range, pinfo, tree)
 	if bitfield ~= 1 then
 		_Warning(string.format("miss bit field"), range, pinfo, tree)
@@ -88,14 +92,14 @@ end
 
 -- <<<<<<<<<<<<<<<<<<<<<<<<<< Pack Header & System Header <<<<<<<<<<<<<<<<<<<<<<<<<<
 function deal_system_header_stream_id(buffer, pinfo, tree)
-	local stream_id = buffer:range(0, 1):uint()
-	tree:add(buffer:range(0, 1), string.format("stream_id: 0x%02x", stream_id))
+	local stream_id = buffer(0, 1):uint()
+	tree:add(buffer(0, 1), string.format("stream_id: 0x%02x", stream_id))
 	if stream_id == 0xB8 then -- 0x10111000
 		tree:append_text(", all audio streams")
 	elseif stream_id == 0xB9 then -- 0x10111001
 		tree:append_text(", all video streams")
 	elseif stream_id < 0xBC then -- 0x10111100
-		_Warning(string.format("invalid stream_id: 0x%02x", stream_id), buffer:range(0, 1), pinfo, tree)
+		_Warning(string.format("invalid stream_id: 0x%02x", stream_id), buffer(0, 1), pinfo, tree)
 	end
 	
 end
@@ -105,14 +109,12 @@ function  system_header(buffer, pinfo, tree)
 	local offset = 0
 	local next_buffer = nil
 	
-	local system_header_tree = tree:add(p_PS, buffer:range(0, header_len), "System Header")
-
-	tree:append_text(", System Header")
+	local system_header_tree = tree:add(p_PS, buffer(0, header_len), "System Header")
 	pinfo.cols.info:append(", SystemHeader")
 
 	-- Byte [0, 5]
 	local start_code_tree = system_header_tree:add(f_PS.system_header_start_code, buffer(offset, 4))
-	start_code_tree:add(f_PS.has_system_header, buffer:range(0, 4), true)
+	start_code_tree:add(f_PS.has_system_header, buffer(0, 4), true)
 	offset = offset + 4
 	system_header_tree:add(f_PS.system_header_header_length, buffer(offset, 2))
 	offset = offset + 2
@@ -140,19 +142,19 @@ function  system_header(buffer, pinfo, tree)
 	system_header_tree:add(f_PS.reserved_bits, buffer(offset, 1))
 	offset = offset + 1
 
-	while offset <  header_len and buffer:range(offset):bitfield(0) do
-		local pstd_buffer_info_tree = system_header_tree:add(buffer:range(offset, 3), "P-STD-buffer_bound_info")
-		deal_system_header_stream_id(buffer:range(offset):tvb(), pinfo, pstd_buffer_info_tree)
+	while offset <  header_len and buffer(offset):bitfield(0) do
+		local pstd_buffer_info_tree = system_header_tree:add(buffer(offset, 3), "P-STD-buffer_bound_info")
+		deal_system_header_stream_id(buffer(offset, 1):tvb(), pinfo, pstd_buffer_info_tree)
 		offset = offset + 1
-		if buffer:range(offset):bitfield(0, 2) ~= 0x3 then
-			_Error(string.format("Bad Bits after stream_id"), buffer:range(offset, 1), pinfo, pstd_buffer_info_tree)
+		if buffer(offset):bitfield(0, 2) ~= 0x3 then
+			_Error(string.format("Bad Bits after stream_id"), buffer(offset, 1), pinfo, pstd_buffer_info_tree)
 		end		
-		pstd_buffer_info_tree:add(buffer:range(offset, 1), string.format("P-STD_buffer_bound_scale : %d", buffer(offset):bitfield(2)))
-		pstd_buffer_info_tree:add(buffer:range(offset, 2), string.format("P-STD_buffer_size_bound : %d", buffer(offset):bitfield(3, 13)))
+		pstd_buffer_info_tree:add(buffer(offset, 1), string.format("P-STD_buffer_bound_scale : %d", buffer(offset):bitfield(2)))
+		pstd_buffer_info_tree:add(buffer(offset, 2), string.format("P-STD_buffer_size_bound : %d", buffer(offset):bitfield(3, 13)))
 		offset = offset + 2
 	end
 	
-	next_buffer = buffer:range(offset):tvb()
+	next_buffer = buffer(offset)
 	return next_buffer
 end
 
@@ -170,7 +172,7 @@ function pack_header(buffer, pinfo, tree)
 	local pack_header_length = 0
 	--- B.1) check the mix length: 112bits, thus 14bytes
 	if buffer_len < 14 then		
-		_Error(string.format("Bad Packet Size(%d)", buffer_len), buffer:range(0, buffer_len), pinfo, tree)
+		_Error(string.format("Bad Packet Size(%d)", buffer_len), buffer(0, buffer_len), pinfo, tree)
 		return nil
 	end
 	pack_header_length = 14
@@ -186,14 +188,14 @@ function pack_header(buffer, pinfo, tree)
 	end
 	-- C) constuct the pack header tree
 	-- Byte[0, 3]
-	local pack_header_tree = tree:add(p_PS, buffer:range(0, pack_header_length), "Pack Header")
+	local pack_header_tree = tree:add(p_PS, buffer(0, pack_header_length), "Pack Header")
 	pinfo.cols.info:append(", PackHeader")
 	local start_code_tree = pack_header_tree:add(f_PS.pack_start_code, buffer(offset, 4))
-	start_code_tree:add(f_PS.has_pack_header, buffer:range(0, 4), true)
+	start_code_tree:add(f_PS.has_pack_header, buffer(0, 4), true)
 	offset = offset + 4
 	-- Byte[4, 9]
-	if buffer:range(offset):bitfield(0, 2) ~= 0x01 then
-		_Error(string.format("Bad Bits after pack_start_code"), buffer:range(offset, 1), pinfo, tree)
+	if buffer(offset):bitfield(0, 2) ~= 0x01 then
+		_Error(string.format("Bad Bits after pack_start_code"), buffer(offset, 1), pinfo, tree)
 	end
 	check_marker_bit(buffer(offset):bitfield(5), buffer(offset, 1), pinfo, tree)
 	check_marker_bit(buffer(offset):bitfield(21), buffer(offset + 2, 1), pinfo, tree)
@@ -221,11 +223,11 @@ function pack_header(buffer, pinfo, tree)
 	if pack_stuffing_length > 0 then
 		local i
 		for i = 0, pack_stuffing_length - 1, 1 do
-			pack_header_tree:add(buffer:range(offset, 1), string.format("stuffing_byte: 0x%02x", buffer:range(offset, 1):uint()))
+			pack_header_tree:add(buffer(offset, 1), string.format("stuffing_byte: 0x%02x", buffer(offset, 1):uint()))
 			offset = offset + 1
 		end
 	end
-	next_buffer = buffer:range(offset):tvb()
+	next_buffer = buffer(offset):tvb()
 	-- system_header
 	if nextbits == SYSTEM_HEADER_START_CODE then
 		next_buffer = system_header(next_buffer, pinfo, pack_header_tree)
@@ -234,15 +236,18 @@ function pack_header(buffer, pinfo, tree)
 	return next_buffer
 end
 -- >>>>>>>>>>>>>>>>>>>>>>>>>> Pack Header & System Header >>>>>>>>>>>>>>>>>>>>>>>>>>
+
+-- <<<<<<<<<<<<<<<<<<<<<<<<<< PES_packet <<<<<<<<<<<<<<<<<<<<<<<<<< 
+
 -- <<<<<<<<<<<<<<<<<<<<<<<<<< PSM <<<<<<<<<<<<<<<<<<<<<<<<<< 
 
 -- TODO: [Bin Wu] to implement all the descriptors' dissector
 function deal_video_stream_desciptor(buffer, pinfo, tree)
-	tree:add(buffer:range(2), "video_stream_desciptor")
+	tree:add(buffer(2), "video_stream_desciptor")
 end
 
 function deal_unsupported_desciptor(buffer, pinfo, tree)
-	tree:add(buffer:range(2), "unsupported_desciptor")
+	tree:add(buffer(2), "unsupported_desciptor")
 end
 -------------------------------------------------------------------------
 -- descriptor_tag 	TS 	PS	Identification
@@ -284,67 +289,66 @@ function dissect_descriptors(length, buffer, pinfo, tree)
 	local offset = 0
 	local length_count = length
 	while length_count > 0 do		
-		local descriptor_tag = buffer:range(offset, 1):uint()
-		local descriptor_length = buffer:range(offset + 1, 1):uint()
-		local descriptor_tree = tree:add(buffer:range(offset, 2 + descriptor_length), "descriptor")
-		descriptor_tree:add(buffer:range(offset, 1), string.format("descriptor_tag: 0x%02x", descriptor_tag))		
-		descriptor_tree:add(buffer:range(offset + 1, 1), string.format("descriptor_length: %d", descriptor_length))
+		local descriptor_tag = buffer(offset, 1):uint()
+		local descriptor_length = buffer(offset + 1, 1):uint()
+		local descriptor_tree = tree:add(buffer(offset, 2 + descriptor_length), "descriptor")
+		descriptor_tree:add(buffer(offset, 1), string.format("descriptor_tag: 0x%02x", descriptor_tag))		
+		descriptor_tree:add(buffer(offset + 1, 1), string.format("descriptor_length: %d", descriptor_length))
 		
 		local handler = descriptor_handler[descriptor_tag] or deal_unsupported_desciptor
-		handler(buffer:range(offset, 2 + descriptor_length):tvb(), pinfo, descriptor_tree)
+		handler(buffer(offset, 2 + descriptor_length):tvb(), pinfo, descriptor_tree)
 		length_count = length_count - 2 - descriptor_length
 		offset = offset + 2 +descriptor_length
 	end 
 	if length_count < 0 then
-		_Error("Wrong Descriptor Length", buffer:range(), pinfo, tree)
+		_Error("Wrong Descriptor Length", buffer(), pinfo, tree)
 	end
 end
 
 function program_stream_map(buffer, pinfo, tree)
 	local buffer_len = buffer:len()
 	local offset = 0
-	local stream_id = buffer:range(3, 1):uint()
-	local packet_length = buffer:range(4, 2):uint()
+	local stream_id = buffer(3, 1):uint()
+	local packet_length = buffer(4, 2):uint()
 
-	local psm_tree = tree:add(p_PS, buffer:range(0, 6 + packet_length), "PSM")
-	tree:append_text(", PSM")
+	local psm_tree = tree:add(p_PS, buffer(0, 6 + packet_length), "PSM")
 	pinfo.cols.info:append(", PSM")
-
+	psm_tree:add(f_PS.packet_start_code_prefix, buffer(0, 3))
 	local start_code_tree = psm_tree:add(f_PS.map_stream_id, buffer(3, 1))
-	start_code_tree:add(f_PS.has_psm, buffer:range(0, 4), true)
+	start_code_tree:add(f_PS.has_psm, buffer(0, 4), true)
 	offset = offset + 4
 	
-	psm_tree:add(f_PS.program_stream_map_length, buffer:range(offset, 2))
-	if buffer:range(offset, 2):uint() > 0x3FA then
-		_Warning(string.format("Bad program_stream_map_length"), buffer:range(offset, 2), pinfo, psm_tree)
+	psm_tree:add(f_PS.program_stream_map_length, buffer(offset, 2))
+	if buffer(offset, 2):uint() > 0x3FA then
+		_Warning(string.format("Bad program_stream_map_length"), buffer(offset, 2), pinfo, psm_tree)
 	end
 	offset = offset + 2
 
-	psm_tree:add(f_PS.current_next_indicator, buffer:range(offset, 1))
-	psm_tree:add(f_PS.psm_reserved1, buffer:range(offset, 1))
-	psm_tree:add(f_PS.program_stream_map_version, buffer:range(offset, 1))
+	psm_tree:add(f_PS.current_next_indicator, buffer(offset, 1))
+	psm_tree:add(f_PS.psm_reserved1, buffer(offset, 1))
+	psm_tree:add(f_PS.program_stream_map_version, buffer(offset, 1))
 	offset = offset + 1
 
-	psm_tree:add(f_PS.psm_reserved2, buffer:range(offset, 1))
+	psm_tree:add(f_PS.psm_reserved2, buffer(offset, 1))
 	check_marker_bit(buffer(offset):bitfield(7), buffer(offset, 1), pinfo, psm_tree)
 	offset = offset + 1
 
-	local psinfo_length = buffer:range(offset, 2):uint()
-	psm_tree:add(f_PS.program_stream_info_length, buffer:range(offset, 2))
+	local psinfo_length = buffer(offset, 2):uint()
+	psm_tree:add(f_PS.program_stream_info_length, buffer(offset, 2))
 	offset = offset + 2
 
 	if psinfo_length > 0 then
-		dissect_descriptors(psinfo_length, buffer:range(offset, psinfo_length):tvb(), pinfo, psm_tree)
+		dissect_descriptors(psinfo_length, buffer(offset, psinfo_length):tvb(), pinfo, psm_tree)
 		offset = offset + psinfo_length
 	end
 	
-	psm_tree:add(f_PS.elementary_stream_map_length, buffer:range(offset, 2))
-	local esmap_length = buffer:range(offset, 2):uint()
+	psm_tree:add(f_PS.elementary_stream_map_length, buffer(offset, 2))
+	local esmap_length = buffer(offset, 2):uint()
 	offset = offset + 2
 	local esmap_start_offset = offset
 
 	while esmap_length > 0 do
-		local stream_type = buffer:range(offset, 1):uint() --TODO: [Bin Wu] to present the meaning of stream_type
+		local stream_type = buffer(offset, 1):uint() --TODO: [Bin Wu] to present the meaning of stream_type
 -- stream_type	description 
 -- 0x00 		ITU-T | ISO/IEC Reserved
 -- 0x01 		ISO/IEC 11172 Video
@@ -369,35 +373,115 @@ function program_stream_map(buffer, pinfo, tree)
 -- 0x14 		ISO/IEC 13818-6 Synchronized Download Protocol
 -- 0x15-0x7F	ITU-T Rec. H.222.0 | ISO/IEC 13818-1 Reserved
 -- 0x80-0xFF 	User Private
-		local elementary_stream_id = buffer:range(offset + 1, 1):uint()
-		local elementary_stream_info_length = buffer:range(offset + 2, 2):uint()
-		local elementary_stream_map_tree = psm_tree:add(buffer:range(offset, 4 + elementary_stream_info_length), "elementary_stream_map")
-		elementary_stream_map_tree:add(buffer:range(offset, 1), string.format("stream_type: 0x%02x", stream_type))		
-		elementary_stream_map_tree:add(buffer:range(offset + 1, 1), string.format("elementary_stream_id: 0x%02x", elementary_stream_id))
-		elementary_stream_map_tree:add(buffer:range(offset + 2, 2), string.format("elementary_stream_info_length: %d", elementary_stream_info_length))
+		local elementary_stream_id = buffer(offset + 1, 1):uint()
+		local elementary_stream_info_length = buffer(offset + 2, 2):uint()
+		local elementary_stream_map_tree = psm_tree:add(buffer(offset, 4 + elementary_stream_info_length), "elementary_stream_map")
+		elementary_stream_map_tree:add(buffer(offset, 1), string.format("stream_type: 0x%02x", stream_type))		
+		elementary_stream_map_tree:add(buffer(offset + 1, 1), string.format("elementary_stream_id: 0x%02x", elementary_stream_id))
+		elementary_stream_map_tree:add(buffer(offset + 2, 2), string.format("elementary_stream_info_length: %d", elementary_stream_info_length))
 		offset = offset + 4
 		if elementary_stream_info_length > 0 then
-			dissect_descriptors(elementary_stream_info_length, buffer:range(offset, elementary_stream_info_length):tvb(), pinfo, elementary_stream_map_tree)
+			dissect_descriptors(elementary_stream_info_length, buffer(offset, elementary_stream_info_length):tvb(), pinfo, elementary_stream_map_tree)
 			offset = offset + elementary_stream_info_length
 		end
 		esmap_length = esmap_length - 4 - elementary_stream_info_length
 	end 
 	if esmap_length < 0 then
-		_Error("Wrong Descriptor in Elamentary Stream Map", buffer:range(esmap_start_offset, buffer:range(esmap_start_offset - 2, 2):uint()), pinfo, psm_tree)
+		_Error("Wrong Descriptor in Elamentary Stream Map", buffer(esmap_start_offset, buffer(esmap_start_offset - 2, 2):uint()), pinfo, psm_tree)
 	end
+	psm_tree:add(f_PS.psm_crc, buffer(offset, 8))
 end
 -- >>>>>>>>>>>>>>>>>>>>>>>>>> PSM >>>>>>>>>>>>>>>>>>>>>>>>>>
-
-function program_stream_map_o(buffer, pinfo, tree)
+-- <<<<<<<<<<<<<<<<<<<<<<<<<< PSD <<<<<<<<<<<<<<<<<<<<<<<<<< 
+function program_stream_directory(buffer, pinfo, tree)
 	local buffer_len = buffer:len()
 	local offset = 0
-	local stream_id = buffer:range(3, 1):uint()
-	local packet_length = buffer:range(4, 2):uint()
+	local stream_id = buffer(3, 1):uint()
+	local packet_length = buffer(4, 2):uint()
+	
+	local header_tree = tree:add(p_PS, buffer(0, 6 + packet_length), "PSD")
+	pinfo.cols.info:append(", PSD")
 
-	local system_header_tree = tree:add(p_PS, buffer:range(0, 6 + packet_length), "PES_packet")
+	header_tree:add(f_PS.packet_start_code_prefix, buffer(0, 3))
+
+	header_tree:add(f_PS.stream_id, buffer(3, 1))
+	offset = offset + 4
+	
+	header_tree:add(f_PS.PES_packet_length, buffer(offset, 2))
+	offset = offset + 2
+end
+-- >>>>>>>>>>>>>>>>>>>>>>>>>> PSD >>>>>>>>>>>>>>>>>>>>>>>>>>
+function padding_stream(buffer, pinfo, tree)
+	local buffer_len = buffer:len()
+	local offset = 0
+	local stream_id = buffer(3, 1):uint()
+	local packet_length = buffer(4, 2):uint()
+
+	local header_tree = tree:add(p_PS, buffer(0, 6 + packet_length), "padding_stream")
+	pinfo.cols.info:append(", padding_stream")
+
+	header_tree:add(f_PS.packet_start_code_prefix, buffer(0, 3))
+	header_tree:add(f_PS.stream_id, buffer( 3, 1))
+	offset = offset + 4
+	
+	header_tree:add(f_PS.PES_packet_length, buffer(offset, 2))
+	offset = offset + 2
+	header_tree:add(f_PS.padding_byte, buffer(offset, packet_length))
+
+end
+function deal_av_stream_id(buffer, pinfo, tree, root)
+	local stream_id = buffer(0, 1):uint()
+	if stream_id >= 0xC0 and stream_id <= 0xDF then
+		-- audio
+		local audio_id = buffer(0):bitfield(3, 5)
+		tree:add(buffer(0, 1), string.format("audio_stream_number: %d(0x%02x)", audio_id, audio_id))
+		pinfo.cols.info:append(string.format("_audio_%d", audio_id));
+		root:append_text(string.format("_audio_%d", audio_id))
+	elseif stream_id >= 0xE0 and stream_id <= 0xEF then
+		-- video
+		local video_id = buffer(0):bitfield(4, 4)
+		tree:add(buffer(0, 1), string.format("video_stream_number: %d(0x%02x)", video_id, video_id))
+		pinfo.cols.info:append(string.format("_video_%d", video_id));
+		root:append_text(string.format("_video_%d", video_id))
+	end
+end
+function with_PES_header(buffer, pinfo, tree)
+	local buffer_len = buffer:len()
+	local offset = 0
+	local stream_id = buffer(3, 1):uint()
+	local packet_length = buffer(4, 2):uint()
+	
+	local header_tree = tree:add(p_PS, buffer(0, 6 + packet_length), "PES_packet")
+	pinfo.cols.info:append(", PES_packet")
+
+	header_tree:add(f_PS.packet_start_code_prefix, buffer(0, 3))
+
+	local stream_id_tree = header_tree:add(f_PS.stream_id, buffer(3, 1))
+	deal_av_stream_id(buffer(3, 1):tvb(), pinfo, stream_id_tree, header_tree)
+	offset = offset + 4
+	
+	header_tree:add(f_PS.PES_packet_length, buffer(offset, 2))
+	offset = offset + 2
+end
+
+function without_PES_header(buffer, pinfo, tree)
+	local buffer_len = buffer:len()
+	local offset = 0
+	local stream_id = buffer(3, 1):uint()
+	local packet_length = buffer(4, 2):uint()
+
+	local header_tree = tree:add(p_PS, buffer(0, 6 + packet_length), "PES_packet")
 	tree:append_text(", PES_packet")
 	pinfo.cols.info:append(", PES_packet")
+
+	header_tree:add(f_PS.packet_start_code_prefix, buffer(0, 3))
+	header_tree:add(f_PS.stream_id, buffer( 3, 1))
+	offset = offset + 4
 	
+	header_tree:add(f_PS.PES_packet_length, buffer(offset, 2))
+	offset = offset + 2
+	header_tree:add(f_PS.PES_packet_data_byte, buffer(offset, packet_length))
+
 end
 
 local still_on_working = false 
@@ -407,45 +491,95 @@ local redisscet_expected_length = {}
 -- 3 valid state/type with redissect_buffer elements: true false string
 local redissect_buffer = {}
 
+--=============================================================================================================================================
+-- Stream_id assignments
+-----------------------------------------------------------------------------------------------------------------------------------------------
+-- stream_id						Note	stream coding
+-- 1011 1100(0xBC)					1		program_stream_map
+-- 1011 1101(0xBD)					2		private_stream_1
+-- 1011 1110(0xBE)							padding_stream
+-- 1011 1111(0xBF)					3		private_stream_2
+-- 110x xxxx(0xC0-0xDF)						ISO/IEC 13818-3 or ISO/IEC 11172-3 or ISO/IEC 13818-7 or ISO/IEC 14496-3 audio stream number x xxxx
+--											MPEG-2 Audio       MPEG-1 Audio       AAC                MPEG-4 Audio 	
+-- 1110 xxxx(0xE0-0xEF)						ITU-T Rec. H.262 | ISO/IEC 13818-2 or ISO/IEC 11172-2 or ISO/IEC 14496-2 video stream number xxxx
+--											                   MPEG-2 Video       MPEG-1 Video       MPEG-4 Video
+-- 1111 0000(0xF0)					3		ECM_stream
+-- 1111 0001(0xF1)					3		EMM_stream
+-- 1111 0010(0xF2)					5		ITU-T Rec. H.222.0 | ISO/IEC 13818-1 Annex A or ISO/IEC 13818-6_DSMCC_stream
+-- 1111 0011(0xF3)					2		ISO/IEC_13522_stream
+-- 1111 0100(0xF4)					6		ITU-T Rec. H.222.1 type A
+-- 1111 0101(0xF5)					6		ITU-T Rec. H.222.1 type B
+-- 1111 0110(0xF6)					6		ITU-T Rec. H.222.1 type C
+-- 1111 0111(0xF7)					6		ITU-T Rec. H.222.1 type D
+-- 1111 1000(0xF8)					6		ITU-T Rec. H.222.1 type E
+-- 1111 1001(0xF9)					7		ancillary_stream
+-- 1111 1010(0xFA)							ISO/IEC14496-1_SL-packetized_stream
+-- 1111 1011(0xFB)							ISO/IEC14496-1_FlexMux_stream
+-- 1111 1100¡­1111 1110(0xFC-0xFE)			reserved data stream
+-- 1111 1111(0xFF)					4		program_stream_directory
+-----------------------------------------------------------------------------------------------------------------------------------------------
+-- The notation x means that the values '0' or '1' are both permitted and results in the same stream type. The stream number is given by
+-- the values taken by the x¡¯s.
+-- NOTE 1 - PES packets of type program_stream_map have unique syntax specified in 2.5.4.1.
+-- NOTE 2 - PES packets of type private_stream_1 and ISO/IEC_13552_stream follow the same PES packet syntax as those for
+-- ITU-T Rec. H.262 | ISO/IEC 13818-2 video and ISO/IEC 13818-3 audio streams.
+-- NOTE 3 - PES packets of type private_stream_2, ECM_stream and EMM_stream are similar to private_stream_1 except no syntax
+-- is specified after PES_packet_length field.
+-- NOTE 4 - PES packets of type program_stream_directory have a unique syntax specified in 2.5.5.
+-- NOTE 5 - PES packets of type DSM-CC_stream have a unique syntax specified in ISO/IEC 13818- 6.
+-- NOTE 6 - This stream_id is associated with stream_type 0x09 in Table 2-29.
+-- NOTE 7 - This stream_id is only used in PES packets, which carry data from a Program Stream or an ISO/IEC 11172-1 System
+-- Stream, in a Transport Stream (refer to 2.4.3.7).
+-----------------------------------------------------------------------------------------------------------------------------------------------
+local PES_header_stream_id_handler={
+[0xBC] = program_stream_map,
+[0xBE] = padding_stream,
+[0xBF] = without_PES_header,
+[0xF0] = without_PES_header,
+[0xF1] = without_PES_header,
+[0xF2] = without_PES_header,
+[0xF8] = without_PES_header,
+[0xFF] = program_stream_directory,
+-- otherwise with_PES_header
+}
 -- return: next buffer
 function PES_packet(buffer, pinfo, tree)
 	local buffer_len = buffer:len()
-	local stream_id = buffer:range(3, 1):uint()
-	local packet_length = buffer:range(4, 2):uint()
+	local stream_id = buffer(3, 1):uint()
+	local packet_length = buffer(4, 2):uint()
 
 	if buffer_len >= 6 + packet_length then
 		if speed_mod_on and not pinfo.visited then
 			-- nop
 			-- when speed_mod_on, only do assembling job, no deeper dissection
 		else
-			if stream_id == 0xBC then
-				program_stream_map(buffer, pinfo, tree)
-			else
-				program_stream_map_o(buffer, pinfo, tree)
-			end
+			local handler = PES_header_stream_id_handler[stream_id] or with_PES_header
+			handler(buffer, pinfo, tree)
 		end
 		if buffer_len == 6 + packet_length then
 			return nil
+		else
+			return buffer(6 + packet_length):tvb()
 		end
-
-		return buffer:range(6 + packet_length):tvb()
 	else
 		-- here comes an incompleted packet, start assembling in comming dissection
-		if not pinfo.visited then
+		if pinfo.visited then
+			return nil
+		else
 			still_on_working = true
 			last_expected_length = 6 + packet_length
 			last_working_luastr = buffer:raw()
 		end
-		return nil
 	end
 end
+-- >>>>>>>>>>>>>>>>>>>>>>>>>> PES_packet >>>>>>>>>>>>>>>>>>>>>>>>>>
 
 -- return: bool
 function check_pacet_start_code_prefix(buffer)
 	if nil == buffer then
 		return false
 	end
-	if buffer:range(0, 3):uint() == 0x000001 then
+	if buffer(0, 3):uint() == 0x000001 then
 		return true
 	end
 	return false	
@@ -496,7 +630,7 @@ function try_assemble_PDU(buffer, pinfo, tree)
 		-- so the packet is the final segment, present it!
 		return ByteArray.new(redissect_buffer[pinfo.number], true):tvb("PES_packet")
 	end
-	tree:add(buffer:range(0, 0), "fragment of PES_packet")
+	tree:add(buffer(0, 0), "fragment of PES_packet")
 	return nil
 end
 
@@ -533,7 +667,7 @@ local p_PS_RTP = Proto("PS_RTP", "MPEG Promgram Stream via RTP")
 
 function p_PS_RTP.dissector(buffer, pinfo, tree)
 	local size = Dissector.get("rtp"):call(buffer, pinfo, tree)
-	p_PS.dissector(buffer:range(size):tvb(), pinfo, tree)
+	p_PS.dissector(buffer(size):tvb(), pinfo, tree)
 	return true
 end
 p_PS.init = init_function
