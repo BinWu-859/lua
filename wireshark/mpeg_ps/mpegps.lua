@@ -1,7 +1,7 @@
 -- based on ITU-T Rec.H222.0(2000)
 -- Bin.Wu@axis.com
--- version 1.0.0.8
--- 2016/01/21
+-- version 1.0.0.9
+-- 2016/01/22
 -- protocol name: PS (Program Stream) PS_RTP (Program Stream via RTP)
 -- ================================================================================================
 --	how to use lua
@@ -55,7 +55,7 @@ f_PS.system_clock_reference_extension = ProtoField.uint16("ps.system_clock_refer
 f_PS.program_mux_rate = ProtoField.uint24("ps.program_mux_rate", "program_mux_rate", base.DEC, nil, 0xFFFFFC)
 f_PS.reserved = ProtoField.uint8("ps.reserved", "reserved", base.HEX, nil, 0xF8)
 f_PS.pack_stuffing_length = ProtoField.uint8("ps.pack_stuffing_length", "pack_stuffing_length", base.DEC, nil, 0x07)
-
+f_PS.pack_stuffing_byte = ProtoField.bytes("ps.pack_stuffing_byte", "pack_stuffing_byte")
 f_PS.has_system_header = ProtoField.bool("ps.has_pack_header", "has_pack_header")
 f_PS.system_header_start_code = ProtoField.uint32("ps.system_header_start_code", "system_header_start_code", base.HEX)
 f_PS.system_header_header_length = ProtoField.uint16("ps.system_header_header_length", "system_header_header_length")
@@ -140,8 +140,24 @@ f_PS.trick_mode_control_reserved3 = ProtoField.uint8("ps.trick_mode_control_rese
 f_PS.trick_mode_control_reserved5 = ProtoField.uint8("ps.trick_mode_control_reserved5", "reserved", base.HEX, nil, 0x1F)
 
 f_PS.additional_copy_info = ProtoField.uint8("ps.additional_copy_info", "additional_copy_info", base.HEX, nil, 0x7F)
-
 f_PS.previous_PES_packet_CRC = ProtoField.bytes("ps.previous_PES_packet_CRC", "previous_PES_packet_CRC")
+
+f_PS.PES_private_data_flag = ProtoField.uint8("ps.PES_private_data_flag", "PES_private_data_flag", base.HEX, nil, 0x80)
+f_PS.pack_header_field_flag = ProtoField.uint8("ps.pack_header_field_flag", "pack_header_field_flag", base.HEX, nil, 0x40)
+f_PS.program_packet_sequence_counter_flag = ProtoField.uint8("ps.program_packet_sequence_counter_flag", "pack_header_field_flag", base.HEX, nil, 0x20)
+f_PS.PSTD_buffer_flag = ProtoField.uint8("ps.PSTD_buffer_flag", "P-STD_buffer_flag", base.HEX, nil, 0x10)
+f_PS.PES_extension_reserved = ProtoField.uint8("ps.PES_extension_reserved", "PES_extension_reserved", base.HEX, nil, 0x0E)
+f_PS.PES_extension_flag_2 = ProtoField.uint8("ps.PES_extension_flag_2", "PES_extension_flag_2", base.HEX, nil, 0x01)
+f_PS.PES_private_data = ProtoField.bytes("ps.PES_private_data", "PES_private_data")
+f_PS.packet_field_length = ProtoField.uint8("ps.packet_field_length", "packet_field_length")
+f_PS.program_packet_sequence_counter = ProtoField.uint8("ps.program_packet_sequence_counter", "program_packet_sequence_counter", base.HEX, nil, 0x7F)
+f_PS.MPEG1_MPEG2_identifier = ProtoField.uint8("ps.MPEG1_MPEG2_identifier", "MPEG1_MPEG2_identifier", base.HEX, nil, 0x40)
+f_PS.original_stuff_length = ProtoField.uint8("ps.original_stuff_length", "original_stuff_length", base.HEX, nil, 0x3F)
+f_PS.PSTD_buffer_scale = ProtoField.uint8("ps.PSTD_buffer_scale", "P-STD_buffer_scale", base.HEX, nil, 0x20)
+f_PS.PSTD_buffer_size = ProtoField.uint16("ps.PSTD_buffer_size", "P-STD_buffer_size", base.HEX, nil, 0x1FFF)
+f_PS.PES_extension_field_length = ProtoField.uint8("ps.PES_extension_field_length", "PES_extension_field_length", base.HEX, nil, 0x7F)
+f_PS.PES_extension_field = ProtoField.bytes("ps.PES_extension_field", "PES_extension_field")
+f_PS.PES_extension_stuffing_byte = ProtoField.bytes("ps.PES_extension_stuffing_byte", "PES_extension_stuffing_byte")
 
 
 function check_marker_bit(bitfield, range, pinfo, tree)
@@ -284,11 +300,8 @@ function pack_header(buffer, pinfo, tree)
 	offset = offset + 1
 	-- stuffing_byte
 	if pack_stuffing_length > 0 then
-		local i
-		for i = 0, pack_stuffing_length - 1, 1 do
-			pack_header_tree:add(buffer(offset, 1), string.format("stuffing_byte: 0x%02x", buffer(offset, 1):uint()))
-			offset = offset + 1
-		end
+		pack_header_tree:add(f_PS.pack_stuffing_byte, buffer(offset, pack_stuffing_length))
+		offset = offset + pack_stuffing_length
 	end
 	next_buffer = buffer(offset):tvb()
 	-- system_header
@@ -561,7 +574,8 @@ function with_PES_header(buffer, pinfo, tree)
 	header_tree:add(f_PS.PES_header_data_length, buffer(offset, 1))
 	local PES_header_data_length = buffer(offset, 1):uint()
 	offset = offset + 1
-	-- optional fields
+	local PES_header_data_start = offset
+	-- optional fields	
 	if all_flags ~= 0 then
 		local optional_fields_tree = header_tree:add(buffer(offset, PES_header_data_length), "optional_fields")
 		-- PTS_DTS_flags PTS
@@ -606,64 +620,136 @@ function with_PES_header(buffer, pinfo, tree)
 		end
 		-- ESCR_flag
 		if 1 == ESCR_flag then
-			DTS_tree:add(f_PS.ESCR_reserved, buffer(offset, 1))
-			check_marker_bit(buffer(offset):bitfield(5), buffer(offset, 1), pinfo, optional_fields_tree)
-			check_marker_bit(buffer(offset):bitfield(21), buffer(offset + 2, 1), pinfo, optional_fields_tree)
-			check_marker_bit(buffer(offset):bitfield(37), buffer(offset + 3, 1), pinfo, optional_fields_tree)
-			check_marker_bit(buffer(offset):bitfield(47), buffer(offset + 4, 1), pinfo, optional_fields_tree)
+			local ESCR_tree = optional_fields_tree:add(buffer(offset, 6), "ESCR")
+			ESCR_tree:add(f_PS.ESCR_reserved, buffer(offset, 1))
+			check_marker_bit(buffer(offset):bitfield(5), buffer(offset, 1), pinfo, ESCR_tree)
+			check_marker_bit(buffer(offset):bitfield(21), buffer(offset + 2, 1), pinfo, ESCR_tree)
+			check_marker_bit(buffer(offset):bitfield(37), buffer(offset + 3, 1), pinfo, ESCR_tree)
+			check_marker_bit(buffer(offset):bitfield(47), buffer(offset + 4, 1), pinfo, ESCR_tree)
 
 			local clock_high = buffer(offset):bitfield(2, 1)
 			local clock_low = buffer(offset):bitfield(3, 2) * 0x40000000
 			clock_low = clock_low + buffer(offset):bitfield(6, 15) * 0x00008000
 			clock_low = clock_low + buffer(offset):bitfield(22, 15)
-			local ESCR_base_tree = pack_header_tree:add(f_PS.ESCR_base, buffer(offset, 5), UInt64.new(clock_low, clock_high))
+			local ESCR_base_tree = ESCR_tree:add(f_PS.ESCR_base, buffer(offset, 5), UInt64.new(clock_low, clock_high))
 			ESCR_base_tree:add(f_PS.ESCR_base_bit_32_30, buffer(offset, 1))
 			ESCR_base_tree:add(f_PS.ESCR_base_bit_29_15, buffer(offset, 3))
 			ESCR_base_tree:add(f_PS.ESCR_base_bit_14_0, buffer(offset + 2, 3))
 			offset = offset + 4
-			pack_header_tree:add(f_PS.ESCR_extension,  buffer(offset, 2))
+			ESCR_tree:add(f_PS.ESCR_extension,  buffer(offset, 2))
 			offset = offset + 2	
 		end
 		-- ES_rate_flag
 		if 1 == ES_rate_flag then
-			check_marker_bit(buffer(offset):bitfield(0), buffer(offset, 1), pinfo, optional_fields_tree)
-			check_marker_bit(buffer(offset):bitfield(23), buffer(offset + 2, 1), pinfo, optional_fields_tree)
-			optional_fields_tree:add(f_PS.ES_rate, buffer(offset, 3))
+			local ES_rate_tree = optional_fields_tree:add(buffer(offset, 3), "ES_rate")
+			check_marker_bit(buffer(offset):bitfield(0), buffer(offset, 1), pinfo, ES_rate_tree)
+			check_marker_bit(buffer(offset):bitfield(23), buffer(offset + 2, 1), pinfo, ES_rate_tree)
+			ES_rate_tree:add(f_PS.ES_rate, buffer(offset, 3))
 			offset = offset + 3
 		end
 		-- DSM_trick_mode_flag
 		if 1 == DSM_trick_mode_flag then
-			optional_fields_tree:add(f_PS.trick_mode_control, buffer(offset, 1))
+			local DSM_trick_mode_tree = optional_fields_tree:add(buffer(offset, 1), "DSM_trick_mode")
+			DSM_trick_mode_tree:add(f_PS.trick_mode_control, buffer(offset, 1))
 			local trick_mode_control = buffer(offset):bitfield(0, 3)
 			if trick_mode_control == 0 or trick_mode_control == 3 then
-				optional_fields_tree:add(f_PS.trick_mode_control_field_id, buffer(offset, 1))
-				optional_fields_tree:add(f_PS.trick_mode_control_intra_slice_refresh, buffer(offset, 1))
-				optional_fields_tree:add(f_PS.trick_mode_control_frequency_truncation, buffer(offset, 1))
+				DSM_trick_mode_tree:append_text(string.format(", %s", trick_mode_control_name[trick_mode_control]))
+				DSM_trick_mode_tree:add(f_PS.trick_mode_control_field_id, buffer(offset, 1))
+				DSM_trick_mode_tree:add(f_PS.trick_mode_control_intra_slice_refresh, buffer(offset, 1))
+				DSM_trick_mode_tree:add(f_PS.trick_mode_control_frequency_truncation, buffer(offset, 1))
 			elseif trick_mode_control == 1 or trick_mode_control == 4 then
-				optional_fields_tree:add(f_PS.trick_mode_control_rep_cntrl, buffer(offset, 1))
+				DSM_trick_mode_tree:append_text(string.format(", %s", trick_mode_control_name[trick_mode_control]))
+				DSM_trick_mode_tree:add(f_PS.trick_mode_control_rep_cntrl, buffer(offset, 1))
 			elseif trick_mode_control == 2 then
-				optional_fields_tree:add(f_PS.trick_mode_control_field_id, buffer(offset, 1))
-				optional_fields_tree:add(f_PS.trick_mode_control_reserved3, buffer(offset, 1))
+				DSM_trick_mode_tree:append_text(string.format(", %s", trick_mode_control_name[trick_mode_control]))
+				DSM_trick_mode_tree:add(f_PS.trick_mode_control_field_id, buffer(offset, 1))
+				DSM_trick_mode_tree:add(f_PS.trick_mode_control_reserved3, buffer(offset, 1))
 			else
-				optional_fields_tree:add(f_PS.trick_mode_control_reserved5, buffer(offset, 1))
+				DSM_trick_mode_tree:add(f_PS.trick_mode_control_reserved5, buffer(offset, 1))
 			end
 			offset = offset + 1
 		end
 		-- additional_copy_info_flag
 		if 1 == additional_copy_info_flag then
-			check_marker_bit(buffer(offset):bitfield(0), buffer(offset, 1), pinfo, optional_fields_tree)
-			optional_fields_tree:add(f_PS.additional_copy_info, buffer(offset, 1))
+			local additional_copy_info_tree = optional_fields_tree:add(buffer(offset, 1), "additional_copy_info")
+			check_marker_bit(buffer(offset):bitfield(0), buffer(offset, 1), pinfo, additional_copy_info_tree)
+			additional_copy_info_tree:add(f_PS.additional_copy_info, buffer(offset, 1))
 			offset = offset + 1
 		end
 		-- PES_CRC_flag
 		if 1 == PES_CRC_flag then
+			local PES_CRC_tree = optional_fields_tree:add(buffer(offset, 2), "PES_CRC")
 			optional_fields_tree:add(f_PS.previous_PES_packet_CRC, buffer(offset, 2))
 			offset = offset + 2
 		end
 		-- PES_extension_flag
 		if 1 == PES_extension_flag then
-
+			local PES_extension_tree = optional_fields_tree:add(buffer(offset, 2), "PES_extension")
+			PES_extension_tree:add(f_PS.PES_private_data_flag, buffer(offset, 1))
+			local PES_private_data_flag = buffer(offset):bitfield(0)
+			PES_extension_tree:add(f_PS.pack_header_field_flag, buffer(offset, 1))
+			local pack_header_field_flag = buffer(offset):bitfield(1)
+			PES_extension_tree:add(f_PS.program_packet_sequence_counter_flag, buffer(offset, 1))
+			local program_packet_sequence_counter_flag = buffer(offset):bitfield(2)
+			PES_extension_tree:add(f_PS.PSTD_buffer_flag, buffer(offset, 1))
+			local PSTD_buffer_flag = buffer(offset):bitfield(3)
+			PES_extension_tree:add(f_PS.PES_extension_reserved, buffer(offset, 1))
+			local PES_private_data_flag = buffer(offset):bitfield(4, 3)
+			PES_extension_tree:add(f_PS.PES_extension_flag_2, buffer(offset, 1))
+			local PES_extension_flag_2 = buffer(offset):bitfield(7)
+			offset = offset + 1
+			if 1 == PES_private_data_flag then
+				local PES_private_data_tree = optional_fields_tree:add(buffer(offset, 16), "PES_private_data")
+				PES_private_data_tree:add(f_PS.PES_private_data, buffer(offset, 16))
+				offset = offset + 16
+			end
+			if 1 == pack_header_field_flag then
+				local packet_field_length = buffer(offset, 1):uint()
+				local pack_header_field_tree = optional_fields_tree:add(buffer(offset, 1 + packet_field_length), "pack_header_field")
+				pack_header_field_tree:add(f_PS.packet_field_length, buffer(offset, 1))
+				offset = offset + 1
+				pack_header(buffer(offset, packet_field_length), pinfo, pack_header_field_tree)
+				offset = offset + packet_field_length
+			end
+			if 1 == program_packet_sequence_counter_flag then
+				local program_packet_sequence_counter_tree = optional_fields_tree:add(buffer(offset, 2), "program_packet_sequence_counter")
+				check_marker_bit(buffer(offset):bitfield(0), buffer(offset, 1), pinfo, program_packet_sequence_counter_tree)
+				check_marker_bit(buffer(offset):bitfield(8), buffer(offset + 1, 1), pinfo, program_packet_sequence_counter_tree)
+				program_packet_sequence_counter_tree:add(f_PS.program_packet_sequence_counter, buffer(offset, 1))
+				offset = offset + 1
+				program_packet_sequence_counter_tree:add(f_PS.MPEG1_MPEG2_identifier, buffer(offset, 1))
+				program_packet_sequence_counter_tree:add(f_PS.original_stuff_length, buffer(offset, 1))
+			end
+			if 1 == PSTD_buffer_flag then
+				local PSTD_buffer_tree = optional_fields_tree:add(buffer(offset, 2), "P-STD_buffer")
+				if buffer(offset):bitfield(0, 2) ~= 0x3 then
+					_Error(string.format("Bad Bits in PSTD_buffer"), buffer(offset, 1), pinfo, PSTD_buffer_tree)
+				end
+				PSTD_buffer_tree:add(f_PS.PSTD_buffer_scale, buffer(offset, 1))
+				PSTD_buffer_tree:add(f_PS.PSTD_buffer_size, buffer(offset, 2))
+				offset = offset + 2
+			end
+			if 1 == PES_extension_flag_2 then
+				local PES_extension_field_length = buffer(offset):bitfield(1, 7)
+				local PES_extension_field_tree = optional_fields_tree:add(buffer(offset, 1 + PES_extension_field_length))
+				check_marker_bit(buffer(offset):bitfield(0), buffer(offset, 1), pinfo, PES_extension_field_tree)
+				PES_extension_field_tree:add(f_PS.PES_extension_field_length, buffer(offset, 1))
+				offset = offset + 1
+				PES_extension_field_tree:add(f_PS.PES_extension_field, buffer(offset, PES_extension_field_length))
+				offset = offset + PES_extension_field_length
+			end
 		end
+		
+	end
+	
+	local stuffing_byte_length = PES_header_data_length - offset + PES_header_data_start
+	if stuffing_byte_length > 0 then
+		header_tree:add(f_PS.PES_extension_stuffing_byte, buffer(offset, stuffing_byte_length))
+		offset = offset + stuffing_byte_length
+	end
+	local remain_data_length = packet_length + 6 - offset
+	if remain_data_length > 0 then
+		header_tree:add(f_PS.PES_packet_data_byte, buffer(offset, remain_data_length))
 	end
 end
 
@@ -687,10 +773,9 @@ function without_PES_header(buffer, pinfo, tree)
 
 end
 
-local still_on_working = false 
+local need_assemble = false 
 local last_working_luastr = nil
 local last_expected_length = 0
-local redisscet_expected_length = {}
 -- 3 valid state/type with redissect_buffer elements: true false string
 local redissect_buffer = {}
 
@@ -748,31 +833,37 @@ local PES_header_stream_id_handler={
 -- return: next buffer
 function PES_packet(buffer, pinfo, tree)
 	local buffer_len = buffer:len()
-	local stream_id = buffer(3, 1):uint()
-	local packet_length = buffer(4, 2):uint()
+	local stream_id = 0
+	local packet_length = 0
 
-	if buffer_len >= 6 + packet_length then
-		if speed_mod_on and not pinfo.visited then
-			-- nop
-			-- when speed_mod_on, only do assembling job, no deeper dissection
-		else
-			local handler = PES_header_stream_id_handler[stream_id] or with_PES_header
-			handler(buffer, pinfo, tree)
+	if buffer_len > 6 then 
+		stream_id = buffer(3, 1):uint()
+		packet_length = buffer(4, 2):uint()
+
+		if buffer_len >= 6 + packet_length then
+			if speed_mod_on and not pinfo.visited then
+				-- nop
+				-- when speed_mod_on, only do assembling job, no deeper dissection
+			else
+				local handler = PES_header_stream_id_handler[stream_id] or with_PES_header
+				handler(buffer, pinfo, tree)
+			end
+			
+			if buffer_len == 6 + packet_length then
+				return nil
+			else
+				return buffer(6 + packet_length):tvb()
+			end
 		end
-		if buffer_len == 6 + packet_length then
-			return nil
-		else
-			return buffer(6 + packet_length):tvb()
-		end
+	end
+	-- here comes an incompleted packet, start assembling in comming dissection
+	if speed_mod_on and pinfo.visited then
+		return nil
 	else
-		-- here comes an incompleted packet, start assembling in comming dissection
-		if pinfo.visited then
-			return nil
-		else
-			still_on_working = true
-			last_expected_length = 6 + packet_length
-			last_working_luastr = buffer:raw()
-		end
+		need_assemble = true
+		last_expected_length = 6 + packet_length
+		last_working_luastr = buffer:raw()
+		return nil
 	end
 end
 -- >>>>>>>>>>>>>>>>>>>>>>>>>> PES_packet >>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -789,8 +880,8 @@ function check_pacet_start_code_prefix(buffer)
 end
 -- return buffer, nil for need further segments
 function try_assemble_PDU(buffer, pinfo, tree)
-	if false == still_on_working and nil == redissect_buffer[pinfo.number] then
-		-- info("first dissection: nice start")
+	if false == need_assemble and nil == redissect_buffer[pinfo.number] then
+		 info(string.format("first dissection: nice start %d", pinfo.number))
 		-- a packet start with packet start code 0x000001
 		-- record the frame, so that it will pass through in further dissection
 		redissect_buffer[pinfo.number] = true
@@ -801,7 +892,7 @@ function try_assemble_PDU(buffer, pinfo, tree)
 		return buffer
 	end
 	if redissect_buffer[pinfo.number] == true then
-		-- whatever still_on_working is true or false, redissect_buffer with true
+		-- whatever need_assemble is true or false, redissect_buffer with true
 		-- means it does not need to assemble former data  
 		return buffer
 	end
@@ -811,20 +902,23 @@ function try_assemble_PDU(buffer, pinfo, tree)
 		-- when it is inner fragment packet, it will set false in redissect_buffer
 		last_working_luastr = last_working_luastr..buffer:raw()
 		redissect_buffer[pinfo.number] = false
-		redisscet_expected_length[pinfo.number] = expected_length
 		-- otherwise, if it is the final fragment packet, redissect_buffer will used 
 		-- to record the entire packet data
 		if #last_working_luastr >= last_expected_length then
 			redissect_buffer[pinfo.number] = last_working_luastr
-			still_on_working = false
+			need_assemble = false
 			last_working_luastr = nil
-			if speed_mod_on then
+			--if speed_mod_on then
 				-- wireshark may call dissector several times for each PDU, so it will save almost
-				-- half of time when just return nil in the first dissection round
-				return nil
-			else
+				-- half of time when just return nil in at first dissection round
+				-- return nil
+				--
+				-- NOTICE!!!! When return nil at the first round, if this PDU contains a part of data of the following PES_packet
+				-- the following PES_packet will NOT be assembled correctly
+				-- So a tvb SHOULD be created and returned here, no shortcut!
+			--else
 				return ByteArray.new(redissect_buffer[pinfo.number], true):tvb("PES_packet")
-			end
+			--end
 		end
 		return nil
 	elseif redissect_buffer[pinfo.number] ~= false then
@@ -840,7 +934,7 @@ end
 -- construct tree
 function p_PS.dissector(buffer, pinfo, tree)
 	pinfo.cols.protocol:set("PS")
-	--info(string.format("p_PS.dissectorstill_on_working %s  %d visited %s", tostring(still_on_working), pinfo.number, tostring(pinfo.visited)))
+	--info(string.format("p_PS.dissector need_assemble %s  %d visited %s", tostring(need_assemble), pinfo.number, tostring(pinfo.visited)))
 	buffer = try_assemble_PDU(buffer, pinfo, tree)
 	if nil == buffer then -- if the packet is one of segment, just pass 
 		return false
@@ -859,7 +953,7 @@ end
 
 function init_function ()
 	--info("init_function")
-	still_on_working = false
+	need_assemble = false
 	last_working_luastr = nil
 	redissect_buffer = {}
 end
