@@ -1,8 +1,9 @@
 -- based on ITU-T Rec.H222.0(2000)
 -- Bin.Wu@axis.com
--- version 1.0.0.10
+-- version 1.0.0.11
 -- 2016/01/22
 -- protocol name: PS (Program Stream) PS_RTP (Program Stream via RTP)
+-- PES_packet PackHeader(SystemHeader) PSM PSD
 -- ================================================================================================
 --	how to use lua
 --	1 find "Global configuration" path:
@@ -16,9 +17,12 @@
 --		3.3 change "console.lua" to this lua file name
 --	4 close and restart wireshark. Go for Analyze->Enable Protocols. New protocol should be in the list.
 -- ================================================================================================
--- Limitation:
--- Only support file with ONE Mpeg Program Stream and with each packet in order.
-
+-- Notice:
+-- Only support file with ONE Mpeg Program Stream and with each packet in the RIGHT order.
+-- When PS_RTP cannot be recognized, try using 'Decode As'
+-- When INVITE (SIP) packets also exist in the file, PS_RTP may takes no effect. Solution:
+--     Use an another protocol to 'Decode As' SIP
+--     or Save all rtp packets as a new file, and open to dissect
 -- ================================================================================================
 -- speed_mod
 -- if sth goes wrong, change speed_mod_on to false and have an another try
