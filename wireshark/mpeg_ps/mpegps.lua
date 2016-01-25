@@ -1,7 +1,7 @@
 -- based on ITU-T Rec.H222.0(2000)
 -- Bin.Wu@axis.com
--- version 1.0.0.11
--- 2016/01/22
+-- version 1.0.0.12
+-- 2016/01/25
 -- protocol name: PS (Program Stream) PS_RTP (Program Stream via RTP)
 -- PES_packet PackHeader(SystemHeader) PSM PSD
 -- ================================================================================================
@@ -993,8 +993,10 @@ function PES_packet(buffer, pinfo, tree)
 	end
 	-- here comes an incompleted packet, start assembling in comming dissection
 	if speed_mod_on and pinfo.visited then
+		tree:add(buffer(0), "Start of fragment of PES_packet")
 		return nil
 	else
+		tree:add(buffer(0), "Start of fragment of PES_packet")
 		need_assemble = true
 		last_expected_length = 6 + packet_length
 		last_working_luastr = buffer:raw()
@@ -1105,3 +1107,5 @@ end
 p_PS.init = init_function
 DissectorTable.get("udp.port"):add_for_decode_as(p_PS_RTP)
 DissectorTable.get("tcp.port"):add_for_decode_as(p_PS_RTP)
+--DissectorTable.get("udp.port"):add_for_decode_as(p_PS)
+--DissectorTable.get("tcp.port"):add_for_decode_as(p_PS)
